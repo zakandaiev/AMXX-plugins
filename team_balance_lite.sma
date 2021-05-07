@@ -27,7 +27,7 @@ new g_iMsgId_ScreenFade;
 
 // PLUGIN INIT
 public plugin_init() {
-  register_plugin("Team Balance Lite", "1.0", "szawesome");
+  register_plugin("Team Balance Lite", "1.1", "szawesome");
   
   register_logevent("LogEvent_JoinTeam", 3, "1=joined team");
   
@@ -232,6 +232,10 @@ GetActualPlayers(&iBestPlayer, &iWorstPlayer, &iCTNum, &iTTNum) {
       default: continue;
     }
   }
+
+  new iMinPlayers = get_pcvar_num(g_pMinPlayers);
+  if(iMinPlayers < 6 || iMinPlayers > 32) iMinPlayers = 6;
+  if(iCTNum + iTTNum < iMinPlayers) return;
 
   SortCustom2D(_:iCTPlayersSkill, sizeof(iCTPlayersSkill) , "SortDesc");
   SortCustom2D(_:iTTPlayersSkill, sizeof(iTTPlayersSkill) , "SortDesc");
