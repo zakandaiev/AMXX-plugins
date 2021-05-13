@@ -13,11 +13,7 @@ enum _:pSkillKey {
 
 const MAXPLAYERS = 32;
 
-new bool:g_bPlayerToTransfer[MAXPLAYERS + 1];
-
 new g_iPlayerHs[MAXPLAYERS + 1], g_iPlayerKills[MAXPLAYERS + 1], g_iPlayerDeaths[MAXPLAYERS + 1];
-
-new Float:g_fJoinTime[MAXPLAYERS + 1];
 
 new g_eTeamScore[Teams + 1];
 
@@ -27,15 +23,12 @@ new g_iMsgId_ScreenFade;
 
 // PLUGIN INIT
 public plugin_init() {
-  register_plugin("Team Balance Lite", "1.1", "szawesome");
-  
-  register_logevent("LogEvent_JoinTeam", 3, "1=joined team");
+  register_plugin("Team Balance Lite", "1.2", "szawesome");
   
   register_event("DeathMsg", "EventDeath", "a");
   register_event("TeamScore", "EventScore", "a");
   register_event("HLTV", "EventNewRound", "a", "1=0", "2=0");
   register_event("TextMsg", "EventClear", "a", "2&#Game_C", "2&#Game_w");
-  register_event("TextMsg", "EventATBMessage", "a", "1=4", "2&#Auto_Team");
   
   g_pScoreDifference = register_cvar("tbl_scorediff", "10");
   g_pMinPlayers = register_cvar("tbl_minplayers", "5");
@@ -50,16 +43,12 @@ public client_putinserver(id) {
   g_iPlayerHs[id] = 0;
   g_iPlayerKills[id] = 0;
   g_iPlayerDeaths[id] = 0;
-  g_bPlayerToTransfer[id] = false;
-  g_fJoinTime[id] = 0.0;
 }
 
 public client_disconnected(id) {
   g_iPlayerHs[id] = 0;
   g_iPlayerKills[id] = 0;
   g_iPlayerDeaths[id] = 0;
-  g_bPlayerToTransfer[id] = false;
-  g_fJoinTime[id] = 0.0;
 }
 
 public EventClear() {
@@ -67,19 +56,6 @@ public EventClear() {
   arrayset(g_iPlayerHs, 0, MAXPLAYERS + 1);
   arrayset(g_iPlayerKills, 0, MAXPLAYERS + 1);
   arrayset(g_iPlayerDeaths, 0, MAXPLAYERS + 1);
-  arrayset(g_bPlayerToTransfer, 0, MAXPLAYERS + 1);
-}
-
-public EventATBMessage() {
-  client_print(0, print_center, "Автоматическая балансировка команд");
-}
-
-public LogEvent_JoinTeam() {
-  new szLogPlayer[80], szName[32], id;
-  read_logargv(0, szLogPlayer, charsmax(szLogPlayer));
-  parse_loguser(szLogPlayer, szName, charsmax(szName));
-  id = get_user_index(szName);
-  g_fJoinTime[id] = get_gametime();
 }
 
 public EventDeath() {
@@ -102,9 +78,6 @@ public EventScore() {
 }
 
 public EventNewRound() {
-  BalanceTeamsToEqualNum();
-  arrayset(g_bPlayerToTransfer, 0, MAXPLAYERS + 1);
-
   new iDifference;
   static iNextCheck;
   
@@ -134,62 +107,6 @@ public EventNewRound() {
 }
 
 // CUSTOM FUNTIONS
-BalanceTeamsToEqualNum() {
-  new iNums[Teams + 1];
-  new iTTNum, iCTNum;
-  new iPlayers[Teams + 1][32];
-  new iNumToSwap, iTeamToSwap;
-  
-  for(new id = 1; id <= g_iMaxPlayers; id++) {
-    if(!is_user_connected(id)) continue;
-    
-    switch(cs_get_user_team(id)) {
-      case CS_TEAM_CT: iPlayers[TeamCT][iNums[TeamCT]++] = id;
-      case CS_TEAM_T: iPlayers[TeamTT][iNums[TeamTT]++] = id;
-      default: continue;
-    }
-  }
-  
-  iTTNum = iNums[TeamTT];
-  iCTNum = iNums[TeamCT];
-  
-  //Узнаем сколько игроков нужно перевести
-  if(iTTNum > iCTNum) {
-    iNumToSwap = ( iTTNum - iCTNum ) / 2;
-    iTeamToSwap = TeamTT;
-  } else if(iCTNum > iTTNum) {
-    iNumToSwap = (iCTNum - iTTNum) / 2;
-    iTeamToSwap = TeamCT;
-  } else return PLUGIN_CONTINUE; // Balance isn't needed, because teams are equal
-  
-  if(!iNumToSwap) return PLUGIN_CONTINUE; // Balance isn't needed
-  
-  new iPlayer, iNum, iLastPlayer;
-  iNum = iNums[iTeamToSwap];
-  
-  do {
-    --iNumToSwap;
-    
-    for(new i; i < iNum; i++) {
-      iPlayer = iPlayers[iTeamToSwap][i];
-      
-      if(g_bPlayerToTransfer[iPlayer]) continue;
-      
-      if(g_fJoinTime[iPlayer] >= g_fJoinTime[iLastPlayer]) {
-        iLastPlayer = iPlayer;
-      }
-    }
-    
-    if(!iLastPlayer) return PLUGIN_CONTINUE;
-    
-    g_bPlayerToTransfer[iLastPlayer] = true;
-    TransferPlayer(iLastPlayer);
-    iLastPlayer = 0;
-  } while(iNumToSwap)
-  
-  return PLUGIN_CONTINUE;
-}
-
 CheckTeamsScore(&iDifference) {
   if(g_eTeamScore[TeamCT] > g_eTeamScore[TeamTT]) {
     iDifference = g_eTeamScore[TeamCT] - g_eTeamScore[TeamTT];
