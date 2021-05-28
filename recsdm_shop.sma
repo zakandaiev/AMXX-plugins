@@ -12,8 +12,12 @@
 new const Float:ADVERT_INTERVAL = 200.0; // каждые секунд
 #endif
 
+// % выпадения рандомной возможности из магазина (при каждом респауне)
+#define FREE_ITEM_CHANCE 5
+
+#if defined FREE_ITEM_CHANCE
 #define chance(%1) (%1 > random(100))
-#define FREE_ITEM_CHANCE 5 // % выпадения любой возможности из магазина (при каждом респауне)
+#endif
 
 // МЕНЮ
 enum _:MENU_DATA  { MENU_NAME[64], MENU_PRICE, MENU_FLAG };
@@ -150,15 +154,17 @@ public CBasePlayer_Killed_Post(victim, killer, gibs) {
   return HC_CONTINUE;
 }
 
+#if defined FREE_ITEM_CHANCE
 public CBasePlayer_OnSpawnEquip_Post(id, bool:addDefault, bool:equipGame) {
   if(is_user_alive(id)) {
     if(chance(FREE_ITEM_CHANCE)) {
       new itemKey = random(sizeof menuData);
       GiveItem(id, itemKey);
-      client_print_color(id, print_team_default, "^4Поздравляем! Ты получил ^3%s^4 с шансом ^3%d\%^4!", menuData[itemKey][MENU_NAME], FREE_ITEM_CHANCE);
+      client_print_color(id, print_team_default, "^4Поздравляем! Ты получил ^3%s^4 с шансом ^3%d%%^4!", menuData[itemKey][MENU_NAME], FREE_ITEM_CHANCE);
     }
   }
 }
+#endif
 
 public CBasePlayer_ResetMaxSpeed_Pre(id) {
   return pServiceSpeed[id] ? HC_SUPERCEDE : HC_CONTINUE;
@@ -237,7 +243,9 @@ public SendAdvertMessage() {
 #endif
 
 RegisterForwards() {
-  DisableHookChain(hookChain[ON_SPAWN_EQUIP_POST] = RegisterHookChain(RG_CBasePlayer_OnSpawnEquip, "CBasePlayer_OnSpawnEquip_Post", true));
+  #if defined FREE_ITEM_CHANCE
+    DisableHookChain(hookChain[ON_SPAWN_EQUIP_POST] = RegisterHookChain(RG_CBasePlayer_OnSpawnEquip, "CBasePlayer_OnSpawnEquip_Post", true));
+  #endif
   DisableHookChain(hookChain[PLAYER_KILLED_POST] = RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true));
   DisableHookChain(hookChain[PLAYER_RESET_MAXSPEED_PRE] = RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Pre", false));
   DisableHookChain(hookChain[PLAYER_JUMP_PRE] = RegisterHookChain(RG_CBasePlayer_Jump, "CBasePlayer_Jump_Pre", false));
