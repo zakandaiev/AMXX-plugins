@@ -20,7 +20,20 @@ new const Float:ADVERT_INTERVAL = 200.0; // каждые секунд
 #endif
 
 // МЕНЮ
-enum _:MENU_DATA  { MENU_NAME[64], MENU_PRICE, MENU_FLAG };
+enum any:MENU_DATA  { MENU_NAME[64], MENU_PRICE, MENU_FLAG };
+
+enum any:SERVICES_LIST {
+  SERVICE_SILENT_STEPS = 0,
+  SERVICE_BHOP,
+  SERVICE_FAST_RUN,
+  SERVICE_GRAVITY,
+  SERVICE_150HP,
+  SERVICE_MULTIJUMP,
+  SERVICE_OPACITY,
+  SERVICE_VAMPIRE,
+  SERVICE_AUTORELOAD,
+  SERVICE_RPG7
+};
 
 new const menuData[][MENU_DATA] = {
   {"Тихий шаг", 3000, ADMIN_ALL},
@@ -61,14 +74,9 @@ new menuId, menuId_Callback;
 
 const TASK_ADVERT = 291;
 
-new pServiceBhop[MAX_CLIENTS + 1],
-    pServiceSpeed[MAX_CLIENTS + 1],
-    pServiceMultiJump[MAX_CLIENTS + 1],
-    pServiceVampire[MAX_CLIENTS + 1],
-    pServiceAutoreload[MAX_CLIENTS + 1];
+new pActiveServices[MAX_CLIENTS + 1][sizeof menuData];
 
-new mjJumpsDone[MAX_CLIENTS + 1];
-new mjJumps[MAX_CLIENTS + 1];
+new pServiceMJ_jumps[MAX_CLIENTS + 1], pServiceMJ_jumpsDone[MAX_CLIENTS + 1];
 
 new pServiceVampire_Hud;
 
@@ -78,7 +86,7 @@ native GiveRPG7(index);
 
 // PLUGIN INIT
 public plugin_init() {
-  register_plugin("ReCSDM Shop", "1.0", "szawesome");
+  register_plugin("ReCSDM Shop", "1.1", "szawesome");
 
   RegisterForwards();
 }
@@ -99,27 +107,21 @@ public OnConfigsExecuted() {
 
 // FORWARDS
 public client_putinserver(id) {
-  pServiceBhop[id] = false;
-  pServiceSpeed[id] = false;
-  pServiceMultiJump[id] = false;
-  pServiceVampire[id] = false;
-  pServiceAutoreload[id] = false;
+  for(new i; i < sizeof menuData; i++) {
+    pActiveServices[id][i] = false;
+  }
 }
 
 public client_disconnected(id) {
-  pServiceBhop[id] = false;
-  pServiceSpeed[id] = false;
-  pServiceMultiJump[id] = false;
-  pServiceVampire[id] = false;
-  pServiceAutoreload[id] = false;
+  for(new i; i < sizeof menuData; i++) {
+    pActiveServices[id][i] = false;
+  }
 }
 
 public CBasePlayer_Killed_Post(victim, killer, gibs) {
-  pServiceBhop[victim] = false;
-  pServiceSpeed[victim] = false;
-  pServiceMultiJump[victim] = false;
-  pServiceVampire[victim] = false;
-  pServiceAutoreload[victim] = false;
+  for(new i; i < sizeof menuData; i++) {
+    pActiveServices[victim][i] = false;
+  }
 
   /*
   Вроде-как само сбрасывается после смерти
@@ -128,7 +130,7 @@ public CBasePlayer_Killed_Post(victim, killer, gibs) {
   set_entvar(victim, var_gravity, 1.0);
   */
 
-  if(pServiceVampire[killer]) {
+  if(pActiveServices[killer][SERVICE_VAMPIRE]) {
     if(victim == killer || !is_user_alive(killer)) {
       return HC_CONTINUE;
     }
@@ -143,7 +145,7 @@ public CBasePlayer_Killed_Post(victim, killer, gibs) {
     ShowSyncHudMsg(killer, pServiceVampire_Hud, "Вампиризм +%0.f HP", healthAdd);
   }
 
-  if(pServiceAutoreload[killer]) {
+  if(pActiveServices[killer][SERVICE_AUTORELOAD]) {
     if(victim == killer || !is_user_alive(killer)) {
       return HC_CONTINUE;
     }
@@ -167,11 +169,11 @@ public CBasePlayer_OnSpawnEquip_Post(id, bool:addDefault, bool:equipGame) {
 #endif
 
 public CBasePlayer_ResetMaxSpeed_Pre(id) {
-  return pServiceSpeed[id] ? HC_SUPERCEDE : HC_CONTINUE;
+  return pActiveServices[id][SERVICE_FAST_RUN] ? HC_SUPERCEDE : HC_CONTINUE;
 }
 
 public CBasePlayer_Jump_Pre(id) {
-  if(pServiceBhop[id]) {
+  if(pActiveServices[id][SERVICE_BHOP]) {
     new const iFlags = get_entvar(id, var_flags);
 
     if(iFlags & FL_WATERJUMP || get_entvar(id, var_waterlevel) >= 2 || !(iFlags & FL_ONGROUND)) {
@@ -188,7 +190,7 @@ public CBasePlayer_Jump_Pre(id) {
     set_entvar(id, var_fuser2, 0.0);
   }
 
-  if(pServiceMultiJump[id]) {
+  if(pActiveServices[id][SERVICE_MULTIJUMP]) {
     new additionalJumps;
     if(get_user_flags(id) & ADMIN_BAN) {
       additionalJumps = 2;
@@ -200,8 +202,8 @@ public CBasePlayer_Jump_Pre(id) {
 
     static Float:flJumpTime[MAX_CLIENTS + 1];
 
-    if (mjJumpsDone[id] && (iFlags & FL_ONGROUND)) {
-      mjJumpsDone[id] = 0;
+    if (pServiceMJ_jumpsDone[id] && (iFlags & FL_ONGROUND)) {
+      pServiceMJ_jumpsDone[id] = 0;
       flJumpTime[id] = get_gametime();
 
       return HC_CONTINUE;
@@ -213,7 +215,7 @@ public CBasePlayer_Jump_Pre(id) {
       return HC_CONTINUE;
     }
 
-    if (mjJumpsDone[id] >= additionalJumps && !mjJumps[id]) {
+    if (pServiceMJ_jumpsDone[id] >= additionalJumps && !pServiceMJ_jumps[id]) {
       return HC_CONTINUE;
     }
 
@@ -225,10 +227,10 @@ public CBasePlayer_Jump_Pre(id) {
 
     set_entvar(id, var_velocity, flVelocity);
 
-    mjJumpsDone[id]++;
+    pServiceMJ_jumpsDone[id]++;
 
-    if (mjJumps[id] && mjJumpsDone[id] > additionalJumps) {
-      mjJumps[id]--;
+    if (pServiceMJ_jumps[id] && pServiceMJ_jumpsDone[id] > additionalJumps) {
+      pServiceMJ_jumps[id]--;
     }
   }
   
@@ -295,6 +297,19 @@ public menuIdCallback(id, menu, item) {
   new playerMoney = get_member(id, m_iAccount);
   new menuPrice = menuData[str_to_num(key)][MENU_PRICE];
 
+  new menuNewItemName[64];
+
+  // menu_item_setname меняет название пункта навсегда, поэтому надо возвращать по дефолту вот так:
+  formatex(menuNewItemName, charsmax(menuNewItemName), "%s \r[%d$]\w",  menuData[item][MENU_NAME], menuData[item][MENU_PRICE]);
+  menu_item_setname(menu, item, menuNewItemName);
+  // а потом уже отображать состояние пунктов:
+
+  if(pActiveServices[id][item]) {
+    formatex(menuNewItemName, charsmax(menuNewItemName), "%s \r[\yактивировано\r]\w",  menuData[item][MENU_NAME]);
+    menu_item_setname(menu, item, menuNewItemName);
+    return ITEM_DISABLED;
+  }
+
   if(playerMoney < menuPrice) {
     return ITEM_DISABLED;
   }
@@ -346,11 +361,9 @@ GiveItem(id, key) {
     }
     case 1: {
       // Банни-хоп
-      pServiceBhop[id] = true;
     }
     case 2: {
       // Быстрый бег
-      pServiceSpeed[id] = true;
       set_entvar(id, var_maxspeed, 400.0);
     }
     case 3: {
@@ -364,7 +377,6 @@ GiveItem(id, key) {
     }
     case 5: {
       // Двойной прыжок
-      pServiceMultiJump[id] = true;
     }
     case 6: {
       // Полупрозрачность
@@ -372,11 +384,9 @@ GiveItem(id, key) {
     }
     case 7: {
       // Вампиризм
-      pServiceVampire[id] = true;
     }
     case 8: {
       // Автоперезаряд
-      pServiceAutoreload[id] = true;
     }
     case 9: {
       // RPG-7
@@ -386,6 +396,8 @@ GiveItem(id, key) {
       return PLUGIN_HANDLED;
     }
   }
+
+  pActiveServices[id][key] = true;
 
   return PLUGIN_HANDLED;
 }
