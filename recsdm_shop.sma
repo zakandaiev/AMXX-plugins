@@ -3,13 +3,13 @@
 #include <fun>
 #include <reapi>
 
-/****************** НАСТРОЙКИ ******************/
+/* ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ CONFIG START ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ */
 // ОПОВЕЩЕНИЕ В ЧАТ
 #define ADVERT
 
 #if defined ADVERT
 #define ADVERT_TEXT "^3CSDM^4 магазин на букву ^3Ш^4, или пиши ^3/shop^4 в чат!"
-new const Float:ADVERT_INTERVAL = 200.0; // каждые секунд
+new const Float:ADVERT_INTERVAL = 200.0; // каждые n секунд
 #endif
 
 // % выпадения рандомной возможности из магазина (при каждом респауне)
@@ -20,15 +20,16 @@ new const Float:ADVERT_INTERVAL = 200.0; // каждые секунд
 #endif
 
 // МЕНЮ
-enum any:MENU_DATA  { MENU_NAME[64], MENU_PRICE, MENU_FLAG };
+enum any:MENU_DATA {MENU_NAME[128], MENU_PRICE, MENU_FLAG};
 
 enum any:SERVICES_LIST {
   SERVICE_SILENT_STEPS = 0,
   SERVICE_BHOP,
-  SERVICE_FAST_RUN,
   SERVICE_GRAVITY,
-  SERVICE_150HP,
+  SERVICE_200HP200AP,
+  SERVICE_FAST_RUN,
   SERVICE_MULTIJUMP,
+  SERVICE_MOLOTOV,
   SERVICE_OPACITY,
   SERVICE_VAMPIRE,
   SERVICE_AUTORELOAD,
@@ -36,16 +37,17 @@ enum any:SERVICES_LIST {
 };
 
 new const menuData[][MENU_DATA] = {
-  {"Тихий шаг", 3000, ADMIN_ALL},
-  {"Банни-хоп", 3000, ADMIN_ALL},
+  {"Тихий шаг", 1500, ADMIN_ALL},
+  {"Банни-хоп", 2000, ADMIN_ALL},
+  {"Гравитация", 2000, ADMIN_ALL},
+  {"200 HP + 200 AP", 3000, ADMIN_ALL},
   {"Быстрый бег", 4000, ADMIN_ALL},
-  {"Гравитация", 5000, ADMIN_ALL},
-  {"150 HP + 150 AP", 5500, ADMIN_ALL},
-  {"Двойной прыжок", 6000, ADMIN_ALL},
+  {"Двойной прыжок", 4500, ADMIN_ALL},
+  {"Молотов", 5000, ADMIN_ALL},
   {"Полупрозрачность", 8000, ADMIN_ALL},
-  {"Вампиризм", 10000, ADMIN_ALL},
-  {"Автоперезарядка", 10000, ADMIN_ALL},
-  {"RPG-7", 15000, ADMIN_ALL}
+  {"Вампиризм", 8000, ADMIN_ALL},
+  {"Автоперезарядка", 8000, ADMIN_ALL},
+  {"RPG-7", 10000, ADMIN_ALL}
 };
 
 new const menuCmds[][] =  {
@@ -59,7 +61,7 @@ new const menuCmds[][] =  {
   "csdm_shop",
   "showbriefing"
 }
-/****************** КОНЕЦ НАСТРОЕК ******************/
+/* ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ CONFIG END ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ */
 
 enum any:HOOK_CHAINS {
   HookChain:ON_SPAWN_EQUIP_POST,
@@ -72,7 +74,9 @@ new HookChain:hookChain[HOOK_CHAINS];
 
 new menuId, menuId_Callback;
 
+#if defined ADVERT
 const TASK_ADVERT = 291;
+#endif
 
 new pActiveServices[MAX_CLIENTS + 1][sizeof menuData];
 
@@ -82,11 +86,13 @@ new pServiceVampire_Hud;
 
 // OUTISDE NATIVES
 native isCsdmStarted();
-native GiveRPG7(index);
+native GiveRPG7(playerId);
+native GiveUserMolotov(playerId);
+native IsUserHasMolotov(playerId);
 
 // PLUGIN INIT
 public plugin_init() {
-  register_plugin("ReCSDM Shop", "1.1", "szawesome");
+  register_plugin("ReCSDM Shop", "1.0", "szawesome");
 
   RegisterForwards();
 }
@@ -97,7 +103,7 @@ public OnConfigsExecuted() {
     EnableForwards();
     BuildMenu();
     #if defined ADVERT
-    set_task_ex(ADVERT_INTERVAL, "SendAdvertMessage", TASK_ADVERT, .flags = SetTask_Repeat);
+      set_task_ex(ADVERT_INTERVAL, "SendAdvertMessage", TASK_ADVERT, .flags = SetTask_Repeat);
     #endif
     pServiceVampire_Hud = CreateHudSyncObj();
   } else {
@@ -162,7 +168,7 @@ public CBasePlayer_OnSpawnEquip_Post(id, bool:addDefault, bool:equipGame) {
     if(chance(FREE_ITEM_CHANCE)) {
       new itemKey = random(sizeof menuData);
       GiveItem(id, itemKey);
-      client_print_color(id, print_team_default, "^4Поздравляем! Ты получил ^3%s^4 с шансом ^3%d%%^4!", menuData[itemKey][MENU_NAME], FREE_ITEM_CHANCE);
+      client_print_color(id, print_team_default, "^4Поздравляем! Ты получил ^3%s^4 с шансом ^3%d%%%^4!", menuData[itemKey][MENU_NAME], FREE_ITEM_CHANCE);
     }
   }
 }
@@ -266,10 +272,10 @@ BuildMenu() {
     register_clcmd(menuCmds[i], "ShowMenu");
   }
 
-  menuId = menu_create("\r[CSDM]\y Магазин", "menuIdHandler");
+  menuId = menu_create("\r[CSDM]\w Магазин", "menuIdHandler");
   menuId_Callback = menu_makecallback("menuIdCallback");
 
-  new menuName[64], menuKey[sizeof menuData];
+  new menuName[128], menuKey[sizeof menuData];
 
   for(new i = 0; i < sizeof menuData; i++) {
     if(menuData[i][MENU_PRICE] < 1) continue;
@@ -278,9 +284,9 @@ BuildMenu() {
     menu_additem(menuId, menuName, menuKey, menuData[i][MENU_FLAG], menuId_Callback);
   }
 
-  menu_setprop(menuId, MPROP_NEXTNAME, "Вперед")
-  menu_setprop(menuId, MPROP_BACKNAME, "Назад")
-  menu_setprop(menuId, MPROP_EXITNAME, "Выход")
+  menu_setprop(menuId, MPROP_BACKNAME, "Назад");
+  menu_setprop(menuId, MPROP_NEXTNAME, "Далее");
+  menu_setprop(menuId, MPROP_EXITNAME, "Выход");
   menu_setprop(menuId, MPROP_PERPAGE, 7);
   menu_setprop(menuId, MPROP_EXIT, MEXIT_ALL);
   menu_setprop(menuId, MPROP_NUMBER_COLOR, "\w");
@@ -291,13 +297,13 @@ public menuIdCallback(id, menu, item) {
     return PLUGIN_HANDLED;
   }
 
-  new key[sizeof menuData], name[64], access, callback;
+  new key[sizeof menuData], name[128], access, callback;
   menu_item_getinfo(menu, item, access, key, sizeof key, name, sizeof name - 1, callback);
 
   new playerMoney = get_member(id, m_iAccount);
   new menuPrice = menuData[str_to_num(key)][MENU_PRICE];
 
-  new menuNewItemName[64];
+  new menuNewItemName[128];
 
   // menu_item_setname меняет название пункта навсегда, поэтому надо возвращать по дефолту вот так:
   formatex(menuNewItemName, charsmax(menuNewItemName), "%s \r[%d$]\w",  menuData[item][MENU_NAME], menuData[item][MENU_PRICE]);
@@ -326,14 +332,13 @@ public menuIdHandler(id, menu, item) {
     return PLUGIN_HANDLED;
   }
 
-  new key[sizeof menuData], name[64], access, callback;
+  new key[sizeof menuData], name[128], access, callback;
   menu_item_getinfo(menu, item, access, key, sizeof key, name, sizeof name - 1, callback);
 
-  rg_add_account(id, -menuData[item][MENU_PRICE], AS_ADD);
-
-  GiveItem(id, item);
-
-  client_print_color(id, print_team_default, "^4Ты купил ^3%s^4!", menuData[item][MENU_NAME]);
+  if(GiveItem(id, item)) {
+    rg_add_account(id, -menuData[item][MENU_PRICE], AS_ADD);
+    client_print_color(id, print_team_default, "^4Ты купил ^3%s^4!", menuData[item][MENU_NAME]);
+  }
 
   return PLUGIN_HANDLED;
 }
@@ -355,49 +360,55 @@ GiveItem(id, key) {
   }
 
   switch(key) {
-    case 0: {
-      // Тихий шаг
+    case SERVICE_SILENT_STEPS: {
+      // SERVICE_SILENT_STEPS
       rg_set_user_footsteps(id, true);
     }
-    case 1: {
-      // Банни-хоп
+    case SERVICE_BHOP: {
+      // SERVICE_BHOP
     }
-    case 2: {
-      // Быстрый бег
-      set_entvar(id, var_maxspeed, 400.0);
-    }
-    case 3: {
-      // Гравитация
+    case SERVICE_GRAVITY: {
+      // SERVICE_GRAVITY
       set_entvar(id, var_gravity, 0.5);
     }
-    case 4: {
-      // 150 HP + 150 AP
-      set_entvar(id, var_health, 150.0);
-      rg_set_user_armor(id, 150, ARMOR_VESTHELM);
+    case SERVICE_FAST_RUN: {
+      // SERVICE_FAST_RUN
+      set_entvar(id, var_maxspeed, 400.0);
     }
-    case 5: {
-      // Двойной прыжок
+    case SERVICE_200HP200AP: {
+      // SERVICE_200HP200AP
+      set_entvar(id, var_health, 200.0);
+      rg_set_user_armor(id, 200, ARMOR_VESTHELM);
     }
-    case 6: {
-      // Полупрозрачность
+    case SERVICE_MULTIJUMP: {
+      // SERVICE_MULTIJUMP
+    }
+    case SERVICE_MOLOTOV: {
+      // SERVICE_MOLOTOV
+      if(IsUserHasMolotov(id)) {
+        client_print(id, print_center, "#Cstrike_TitlesTXT_Already_Have_One");
+        return false;
+      }
+      GiveUserMolotov(id);
+    }
+    case SERVICE_OPACITY: {
+      // SERVICE_OPACITY
       set_user_rendering(id, kRenderFxNone, 0, 0, 0, kRenderTransAlpha, 50);
     }
-    case 7: {
-      // Вампиризм
+    case SERVICE_VAMPIRE: {
+      // SERVICE_VAMPIRE
     }
-    case 8: {
-      // Автоперезаряд
+    case SERVICE_AUTORELOAD: {
+      // SERVICE_AUTORELOAD
     }
-    case 9: {
-      // RPG-7
+    case SERVICE_RPG7: {
+      // SERVICE_RPG7
       GiveRPG7(id);
     }
-    default: {
-      return PLUGIN_HANDLED;
-    }
+    default: return false;
   }
 
   pActiveServices[id][key] = true;
 
-  return PLUGIN_HANDLED;
+  return true;
 }
