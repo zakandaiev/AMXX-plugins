@@ -3,39 +3,32 @@
 #include <reapi>
 
 // PREPARE DATA
-enum _:Teams {
-  TeamTT = 1,
-  TeamCT
-}
 enum _:pSkillKey {
   pId = 0,
   pSkill
 }
 
-const CHECK_INTERVAL = 10;
-
 new playerHs[MAX_CLIENTS + 1], playerKills[MAX_CLIENTS + 1], playerDeaths[MAX_CLIENTS + 1];
 
-new teamScore[Teams + 1];
+new bool:playerToTransfer[MAX_CLIENTS + 1];
 
-new cvarScoreDifference, cvarMinPlayers, cvarNoRound, getMaxPlayers;
+new cvarScoreDifference, cvarMinPlayers, cvarNoRound;
 
 new userMessage_ScreenFade;
 
 // PLUGIN INIT
 public plugin_init() {
   register_plugin("Team Balance Lite", "1.0", "szawesome");
-  
-  register_event("DeathMsg", "EventDeath", "a");
-  register_event("TeamScore", "EventScore", "a");
-  register_event("HLTV", "EventNewRound", "a", "1=0", "2=0");
-  register_event("TextMsg", "EventClear", "a", "2&#Game_C", "2&#Game_w");
+
+  register_event("TextMsg", "Event_Clear", "a", "2&#Game_C", "2&#Game_w");
+
+  RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true);
+  RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn_Pre", false);
+  RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false);
   
   cvarScoreDifference = register_cvar("tbl_scorediff", "10");
   cvarMinPlayers = register_cvar("tbl_minplayers", "5");
   cvarNoRound = register_cvar("tbl_noround", "0");
-  
-  getMaxPlayers = get_maxplayers();
 
   userMessage_ScreenFade = get_user_msgid("ScreenFade");
 }
@@ -45,119 +38,143 @@ public client_putinserver(id) {
   playerHs[id] = 0;
   playerKills[id] = 0;
   playerDeaths[id] = 0;
+  playerToTransfer[id] = false;
 }
 
 public client_disconnected(id) {
   playerHs[id] = 0;
   playerKills[id] = 0;
   playerDeaths[id] = 0;
+  playerToTransfer[id] = false;
 }
 
-public EventClear() {
-  arrayset(teamScore, 0, Teams + 1);
+public Event_Clear() {
   arrayset(playerHs, 0, MAX_CLIENTS + 1);
   arrayset(playerKills, 0, MAX_CLIENTS + 1);
   arrayset(playerDeaths, 0, MAX_CLIENTS + 1);
+  arrayset(playerToTransfer, false, MAX_CLIENTS + 1);
 }
 
-public EventDeath() {
-  if(!get_pcvar_num(cvarNoRound)) {
-    new iKiller = read_data(1);
-  
-    if(read_data(3)) {
-      playerHs[iKiller]++;
+public CBasePlayer_Killed_Post(victim, killer, gibs) {
+  if(!is_user_connected(victim) || !is_user_connected(killer)) {
+    return HC_SUPERCEDE;
+  }
+
+  if(!get_pcvar_num(cvarNoRound)) {    
+    playerKills[killer]++;
+    playerDeaths[victim]++;
+
+    if(get_member(victim, m_bHeadshotKilled)) {
+      playerHs[killer]++;
     }
-    
-    playerKills[iKiller]++;
-    playerDeaths[read_data(2)]++;
   } else {
-    static iKills; 
-    iKills++;
-    
-    if(!(iKills % CHECK_INTERVAL)) {
-      BalanceTeamsToEqualNum();
-    }
-  }
-}
-
-public EventScore() { 
-  new szTeam[1];
-  read_data(1, szTeam, 1);
-
-  if(szTeam[0] == 'C') teamScore[TeamCT] = read_data(2);
-  else teamScore[TeamTT] = read_data(2);
-}
-
-public EventNewRound() {
-  if(!get_pcvar_num(cvarNoRound)) {
-    new iDifference;
-    static iNextCheck;
-    
-    iNextCheck--;
-    
-    CheckTeamsScore(iDifference);
-    
-    if(iNextCheck <= 0 && iDifference >= get_pcvar_num(cvarScoreDifference)) {
-      new iBestPlayer, iWorstPlayer, iCTNum, iTTNum;
-      GetActualPlayers(iBestPlayer, iWorstPlayer, iCTNum, iTTNum);
+    new TTNum, CTNum;
       
-      new iMinPlayers = get_pcvar_num(cvarMinPlayers);
-      if(iMinPlayers < 6 || iMinPlayers > 32) {
-        iMinPlayers = 6;
-      }
+    CountPlayers(TTNum, CTNum);
 
-      if(iCTNum + iTTNum >= iMinPlayers) {
-        iNextCheck = get_pcvar_num(cvarScoreDifference);
-
-        TransferPlayer(iBestPlayer);
-        TransferPlayer(iWorstPlayer);
-
-        /*server_print("Best Player %n", iBestPlayer);
-        server_print("Worst Player %n", iWorstPlayer);*/
+    if(abs(TTNum - CTNum) > 1) {
+      if(
+          (TTNum - CTNum) > 0 && get_member(victim, m_iTeam) == TEAM_TERRORIST
+          ||
+          (CTNum - TTNum) > 0 && get_member(victim, m_iTeam) == TEAM_CT
+        ) {
+        playerToTransfer[victim] = true;
       }
     }
   }
+
+  return HC_CONTINUE;
+}
+
+public CBasePlayer_Spawn_Pre(id) {
+  if(is_user_connected(id) && playerToTransfer[id]) {
+    TransferPlayer(id);
+    playerToTransfer[id] = false;
+  }
+
+  return HC_CONTINUE;
+}
+
+public CSGameRules_RestartRound_Pre() {
+  if(!get_pcvar_num(cvarNoRound)) {
+    new difference;
+    static nextCheck;
+    
+    nextCheck--;
+    
+    GetTeamsScore(difference);
+    
+    if(nextCheck <= 0 && difference >= get_pcvar_num(cvarScoreDifference)) {
+      new bestPlayer, worstPlayer, CTNum, TTNum;
+      GetBestWorstPlayers(bestPlayer, worstPlayer, CTNum, TTNum);
+      
+      new minPlayers = get_pcvar_num(cvarMinPlayers);
+      if(minPlayers < 6 || minPlayers > 32) {
+        minPlayers = 6;
+      }
+
+      if(CTNum + TTNum >= minPlayers) {
+        nextCheck = get_pcvar_num(cvarScoreDifference);
+
+        playerToTransfer[bestPlayer] = true;
+        playerToTransfer[worstPlayer] = true;
+      }
+    }
+  }
+
+  return HC_CONTINUE;
 }
 
 // CUSTOM FUNTIONS
-CheckTeamsScore(&iDifference) {
-  if(teamScore[TeamCT] > teamScore[TeamTT]) {
-    iDifference = teamScore[TeamCT] - teamScore[TeamTT];
-  }
-  
-  if(teamScore[TeamTT] > teamScore[TeamCT]) {
-    iDifference = teamScore[TeamTT] - teamScore[TeamCT];
+CountPlayers(&TTNum, &CTNum) {  
+  for(new id = 1; id <= MaxClients; id++) {
+    if(!is_user_connected(id) || is_user_hltv(id)) continue;
+    switch(TeamName:get_member(id, m_iTeam)) {
+      case TEAM_TERRORIST: TTNum++;
+      case TEAM_CT: CTNum++;
+      default: continue;
+    }
   }
 }
 
-GetActualPlayers(&iBestPlayer, &iWorstPlayer, &iCTNum, &iTTNum) {
-  new Float:iCTPlayersSkill[MAX_CLIENTS + 1][pSkillKey];
-  new Float:iTTPlayersSkill[MAX_CLIENTS + 1][pSkillKey];
-  new iKills, iDeaths, iHs;
+GetTeamsScore(&difference) {
+  if(get_member_game(m_iNumCTWins) > get_member_game(m_iNumTerroristWins)) {
+    difference = get_member_game(m_iNumCTWins) - get_member_game(m_iNumTerroristWins);
+  }
+  
+  if(get_member_game(m_iNumTerroristWins) > get_member_game(m_iNumCTWins)) {
+    difference = get_member_game(m_iNumTerroristWins) - get_member_game(m_iNumCTWins);
+  }
+}
 
-  for(new id = 1; id <= getMaxPlayers; id++) {
-    if(!is_user_connected(id)) continue;
+GetBestWorstPlayers(&bestPlayer, &worstPlayer, &CTNum, &TTNum) {
+  new Float:CTPlayersSkill[MAX_CLIENTS + 1][pSkillKey];
+  new Float:TTPlayersSkill[MAX_CLIENTS + 1][pSkillKey];
+  new kills, deaths, headshots;
 
-    switch(get_member(id, m_iTeam)) {
+  for(new id = 1; id <= MaxClients; id++) {
+    if(!is_user_connected(id) || is_user_hltv(id)) continue;
+
+    switch(TeamName:get_member(id, m_iTeam)) {
       case TEAM_CT: {
-        iCTNum++
+        CTNum++
 
-        iHs = playerHs[id];
-        iKills = playerKills[id];
-        iDeaths = playerDeaths[id];
+        headshots = playerHs[id];
+        kills = playerKills[id];
+        deaths = playerDeaths[id];
 
-        iCTPlayersSkill[id][pId] = Float:id;
-        iCTPlayersSkill[id][pSkill] = get_skill(iKills, iDeaths, iHs);
+        CTPlayersSkill[id][pId] = Float:id;
+        CTPlayersSkill[id][pSkill] = get_skill(kills, deaths, headshots);
       }
       case TEAM_TERRORIST: {
-        iTTNum++
+        TTNum++
 
-        iHs = playerHs[id];
-        iKills = playerKills[id];
-        iDeaths = playerDeaths[id];
+        headshots = playerHs[id];
+        kills = playerKills[id];
+        deaths = playerDeaths[id];
 
-        iTTPlayersSkill[id][pId] = Float:id;
-        iTTPlayersSkill[id][pSkill] = get_skill(iKills, iDeaths, iHs);
+        TTPlayersSkill[id][pId] = Float:id;
+        TTPlayersSkill[id][pSkill] = get_skill(kills, deaths, headshots);
       }
       default: continue;
     }
@@ -165,17 +182,17 @@ GetActualPlayers(&iBestPlayer, &iWorstPlayer, &iCTNum, &iTTNum) {
 
   new iMinPlayers = get_pcvar_num(cvarMinPlayers);
   if(iMinPlayers < 6 || iMinPlayers > 32) iMinPlayers = 6;
-  if(iCTNum + iTTNum < iMinPlayers) return;
+  if(CTNum + TTNum < iMinPlayers) return;
 
-  SortCustom2D(_:iCTPlayersSkill, sizeof(iCTPlayersSkill) , "SortDesc");
-  SortCustom2D(_:iTTPlayersSkill, sizeof(iTTPlayersSkill) , "SortDesc");
+  SortCustom2D(_:CTPlayersSkill, sizeof(CTPlayersSkill) , "SortDesc");
+  SortCustom2D(_:TTPlayersSkill, sizeof(TTPlayersSkill) , "SortDesc");
 
-  if(teamScore[TeamCT] > teamScore[TeamTT]) { // если КТ побеждает
-    iBestPlayer = _:iCTPlayersSkill[0][pId]; // выбираем самого первого КТ из массива (с самым высоким скиллом)
-    iWorstPlayer = _:iTTPlayersSkill[iTTNum-1][pId]; // выбираем самого последнего доступного игрока (с самым плохим скиллом) (после него идут пустые индексы если онлайн ниже 32)
+  if(get_member_game(m_iNumCTWins) > get_member_game(m_iNumTerroristWins)) { // если КТ побеждает
+    bestPlayer = _:CTPlayersSkill[0][pId]; // выбираем самого первого КТ из массива (с самым высоким скиллом)
+    worstPlayer = _:TTPlayersSkill[TTNum-1][pId]; // выбираем самого последнего доступного игрока (с самым плохим скиллом) (после него идут пустые индексы если онлайн ниже 32)
   } else {
-    iBestPlayer = _:iTTPlayersSkill[0][pId];
-    iWorstPlayer = _:iCTPlayersSkill[iCTNum-1][pId];
+    bestPlayer = _:TTPlayersSkill[0][pId];
+    worstPlayer = _:CTPlayersSkill[CTNum-1][pId];
   }
 }
 
@@ -190,48 +207,9 @@ public SortDesc(Float:elem1[], Float:elem2[]) {
   return 0;
 }
 
-BalanceTeamsToEqualNum() {
-  new iNums[Teams + 1];
-  new iTTNum, iCTNum;
-  new iPlayers[Teams + 1][32];
-  new iNumToSwap, iTeamToSwap;
-  
-  for(new id = 1; id <= getMaxPlayers; id++) {
-    if(!is_user_connected(id)) continue;
-    
-    switch(get_member(id, m_iTeam)) {
-      case TEAM_CT: iPlayers[TeamCT][iNums[TeamCT]++] = id;
-      case TEAM_TERRORIST: iPlayers[TeamTT][iNums[TeamTT]++] = id;
-      default: continue;
-    }
-  }
-  
-  iTTNum = iNums[TeamTT];
-  iCTNum = iNums[TeamCT];
-  
-  //Узнаем сколько игроков нужно перевести
-  if(iTTNum > iCTNum) {
-    iNumToSwap = ( iTTNum - iCTNum ) / 2;
-    iTeamToSwap = TeamTT;
-  } else if(iCTNum > iTTNum) {
-    iNumToSwap = (iCTNum - iTTNum) / 2;
-    iTeamToSwap = TeamCT;
-  } else return PLUGIN_CONTINUE;  // Balance isn't needed, because teams are equal
-  
-  if(!iNumToSwap) return PLUGIN_CONTINUE;   // Balance isn't needed
-
-  for(new i = 0; i <= iNumToSwap; i++) {
-    TransferPlayer(iPlayers[iTeamToSwap][i]);
-  }
-  
-  return PLUGIN_CONTINUE;
-}
-
-TransferPlayer(const id) {
-  new TeamName:iTeam;
-    
+TransferPlayer(id) {  
   if(is_user_connected(id)) {
-    iTeam = get_member(id, m_iTeam);
+    new TeamName:iTeam = get_member(id, m_iTeam);
 
     if(TEAM_TERRORIST <= iTeam <= TEAM_CT) {
       if(is_user_alive(id) && user_has_weapon(id, CSW_C4)) {
@@ -240,34 +218,43 @@ TransferPlayer(const id) {
 
       rg_switch_team(id);
 
-      if(is_user_alive(id)) {
+      /*if(is_user_alive(id)) {
         rg_round_respawn(id);
-      }
+      }*/
       
-      if(!is_user_bot(id)) {
-        set_dhudmessage(255, 200, 0, -1.0, -0.29, 2, _, 5.0, 0.07);
-
-        if(iTeam == TEAM_TERRORIST) {
-          screen_fade(id, 0, 0, 255, 100, 1);
-          show_dhudmessage(id, "Вы были переведены за Контр-Террористов");
-        } else {
-          screen_fade(id, 255, 0, 0, 100, 1);
-          show_dhudmessage(id, "Вы были переведены за Террористов");
-        }
-        
-        client_cmd(id, "spk fvox/bell");
+      if(!get_pcvar_num(cvarNoRound) && !is_user_bot(id)) {
+        SendNoticeMessage(id);
+        // set_task_ex(0.1, "SendNoticeMessage", .flags = SetTask_Once); // как тут id игрока передать?
+      } else {
+        SendNoticeMessage(id);
       }
     }
   }
 }
 
-Float:get_skill(iKills, iDeaths, iHeadShots) {
-  new Float:fSkill;
-  if(iDeaths == 0) {
-    iDeaths = 1;
+public SendNoticeMessage(id) {
+  if(is_user_connected(id) && !is_user_bot(id)) {
+    set_dhudmessage(255, 200, 0, -1.0, -0.29, 2, _, 5.0, 0.07);
+
+    if(get_member(id, m_iTeam) == TEAM_TERRORIST) {
+      screen_fade(id, 255, 0, 0, 100, 1);
+      show_dhudmessage(id, "Вы были переведены за Террористов");
+    } else {
+      screen_fade(id, 0, 0, 255, 100, 1);
+      show_dhudmessage(id, "Вы были переведены за Контр-Террористов");
+    }
+    
+    client_cmd(id, "spk fvox/bell");
   }
-  fSkill = (float(iKills) + float(iHeadShots)) / float(iDeaths);
-  return fSkill;
+}
+
+Float:get_skill(kills, deaths, headShots) {
+  new Float:skill;
+  if(deaths == 0) {
+    deaths = 1;
+  }
+  skill = (float(kills) + float(headShots)) / float(deaths);
+  return skill;
 }
 
 stock screen_fade(id, red, green, blue, alfa, durration) {
@@ -282,4 +269,4 @@ stock screen_fade(id, red, green, blue, alfa, durration) {
   write_byte(blue);
   write_byte(alfa);
   message_end();
-} 
+}
