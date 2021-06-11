@@ -67,26 +67,16 @@ public CBasePlayer_Killed_Post(victim, killer, gibs) {
     if(get_member(victim, m_bHeadshotKilled)) {
       playerHs[killer]++;
     }
-  } else {
-    new TTNum, CTNum;
-      
-    CountPlayers(TTNum, CTNum);
-
-    if(abs(TTNum - CTNum) > 1) {
-      if(
-          (TTNum - CTNum) > 0 && get_member(victim, m_iTeam) == TEAM_TERRORIST
-          ||
-          (CTNum - TTNum) > 0 && get_member(victim, m_iTeam) == TEAM_CT
-        ) {
-        playerToTransfer[victim] = true;
-      }
-    }
   }
 
   return HC_CONTINUE;
 }
 
 public CBasePlayer_Spawn_Pre(id) {
+  if(get_pcvar_num(cvarNoRound)) {
+    ModeDM_SetPlayerToTranfer(id);
+  }
+
   if(is_user_connected(id) && playerToTransfer[id]) {
     TransferPlayer(id);
     playerToTransfer[id] = false;
@@ -126,13 +116,25 @@ public CSGameRules_RestartRound_Pre() {
 }
 
 // CUSTOM FUNTIONS
-CountPlayers(&TTNum, &CTNum) {  
-  for(new id = 1; id <= MaxClients; id++) {
-    if(!is_user_connected(id) || is_user_hltv(id)) continue;
-    switch(TeamName:get_member(id, m_iTeam)) {
+ModeDM_SetPlayerToTranfer(id) {
+  new TTNum, CTNum;
+      
+  for(new player = 1; player <= MaxClients; player++) {
+    if(!is_user_connected(player) || is_user_hltv(player)) continue;
+    switch(TeamName:get_member(player, m_iTeam)) {
       case TEAM_TERRORIST: TTNum++;
       case TEAM_CT: CTNum++;
       default: continue;
+    }
+  }
+
+  if(abs(TTNum - CTNum) > 1) {
+    if(
+        (TTNum - CTNum) > 0 && get_member(id, m_iTeam) == TEAM_TERRORIST
+        ||
+        (CTNum - TTNum) > 0 && get_member(id, m_iTeam) == TEAM_CT
+      ) {
+      playerToTransfer[id] = true;
     }
   }
 }
@@ -224,7 +226,7 @@ TransferPlayer(id) {
       
       if(!get_pcvar_num(cvarNoRound) && !is_user_bot(id)) {
         SendNoticeMessage(id);
-        // set_task_ex(0.1, "SendNoticeMessage", .flags = SetTask_Once); // как тут id игрока передать?
+        // set_task_ex(0.1, "SendNoticeMessage", .flags = SetTask_Once); // skip reset hud. как тут id игрока передать?
       } else {
         SendNoticeMessage(id);
       }
