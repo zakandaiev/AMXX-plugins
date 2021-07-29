@@ -6,14 +6,14 @@
 
 const ROUND_EVENTS = eventBit(ROUND_GAME_COMMENCE) | eventBit(ROUND_GAME_RESTART) | eventBit(ROUND_GAME_OVER);
 
-new cvarMoneyBonus;
+new cvarReward;
 
-enum _:Player {
+enum _:PlayerData {
   PlayerKills,
   PlayerDmg
 }
 
-new Players[MAX_CLIENTS + 1][Player];
+new Players[MAX_CLIENTS + 1][PlayerData];
 
 public plugin_init() {
   register_plugin("Best Player of the Round", "1.0", "szawesome");
@@ -22,7 +22,7 @@ public plugin_init() {
   RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true);
   RegisterHookChain(RG_RoundEnd, "RoundEnd_Post", true);
   
-  cvarMoneyBonus = register_cvar("bpr_money", "1000");
+  cvarReward = register_cvar("bpr_reward", "1000");
 }
 
 public client_putinserver(id) {
@@ -39,6 +39,7 @@ public CBasePlayer_TakeDamage_Post(victim, inflictor, attacker, Float:damage, da
   }
 
   Players[attacker][PlayerDmg] += floatround(damage);
+
   return HC_CONTINUE;
 }
 
@@ -85,12 +86,14 @@ public TaskRoundEnd() {
     return;
   }
 
-  new moneyBonus = get_pcvar_num(cvarMoneyBonus);
-  if (moneyBonus > 0) {
-    rg_add_account(maxId, moneyBonus, AS_ADD, true);
+  new reward = get_pcvar_num(cvarReward);
+  if (reward > 0) {
+    rg_add_account(maxId, reward, AS_ADD, true);
     client_print_color(0, maxId, "^4Лучший игрок раунда ^3%n^4 убил ^3%d^4 и нанёс ^3%d^4 урона!", maxId, Players[maxId][PlayerKills], Players[maxId][PlayerDmg]);
-    client_print_color(maxId, maxId, "^4Ты получил ^3%d$^4 бонуса!", moneyBonus);
+    client_print_color(maxId, maxId, "^4Ты получил ^3%d$^4 бонуса!", reward);
   }
 
-  clearPlayer(maxId);
+  for (new i = 0; i < num; i++) {
+    clearPlayer(players[i]);
+  }
 }
