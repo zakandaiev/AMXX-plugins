@@ -20,8 +20,6 @@ new userMessage_ScreenFade;
 public plugin_init() {
   register_plugin("Team Balance Lite", "1.0", "szawesome");
 
-  register_event("TextMsg", "Event_Clear", "a", "2&#Game_C", "2&#Game_w");
-
   RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true);
   RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn_Pre", false);
   RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false);
@@ -46,13 +44,6 @@ public client_disconnected(id) {
   playerKills[id] = 0;
   playerDeaths[id] = 0;
   playerToTransfer[id] = false;
-}
-
-public Event_Clear() {
-  arrayset(playerHs, 0, MAX_CLIENTS + 1);
-  arrayset(playerKills, 0, MAX_CLIENTS + 1);
-  arrayset(playerDeaths, 0, MAX_CLIENTS + 1);
-  arrayset(playerToTransfer, false, MAX_CLIENTS + 1);
 }
 
 public CBasePlayer_Killed_Post(victim, killer, gibs) {
@@ -86,6 +77,10 @@ public CBasePlayer_Spawn_Pre(id) {
 }
 
 public CSGameRules_RestartRound_Pre() {
+  if(bool:get_member_game(m_bCompleteReset)) {
+    ClearArrays();
+  }
+
   if(!get_pcvar_num(cvarNoRound)) {
     new difference;
     static nextCheck;
@@ -116,6 +111,13 @@ public CSGameRules_RestartRound_Pre() {
 }
 
 // CUSTOM FUNTIONS
+ClearArrays() {
+  arrayset(playerHs, 0, MAX_CLIENTS + 1);
+  arrayset(playerKills, 0, MAX_CLIENTS + 1);
+  arrayset(playerDeaths, 0, MAX_CLIENTS + 1);
+  arrayset(playerToTransfer, false, MAX_CLIENTS + 1);
+}
+
 ModeDM_SetPlayerToTranfer(id) {
   new TTNum, CTNum;
       
