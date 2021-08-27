@@ -12,7 +12,7 @@
 new const Float:ADVERT_INTERVAL = 200.0; // каждые n секунд
 #endif
 
-// % выпадения рандомной возможности из магазина (при каждом респауне)
+// % выпадение рандомной возможности из магазина (при каждом респауне)
 #define FREE_ITEM_CHANCE 5
 
 #if defined FREE_ITEM_CHANCE
@@ -229,7 +229,7 @@ public CBasePlayer_Jump_Pre(id) {
 
     new Float:flVelocity[3];
     get_entvar(id, var_velocity, flVelocity);
-    flVelocity[2] = 350.0;
+    flVelocity[2] = 275.0;
 
     set_entvar(id, var_velocity, flVelocity);
 
