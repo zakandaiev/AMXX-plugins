@@ -117,7 +117,7 @@ RegisterCvars() {
   cvar[SCORE_DIFFERENCE] = create_cvar(
     .name = "tbl_score_diff", 
     .string = "10",
-    .flags = FCVAR_SERVER,
+    .flags = FCVAR_NONE,
     .description = "Разница в счёте команд, при которой произойдет баланс",
     .has_min = true, 
     .min_val = 1.0
@@ -125,7 +125,7 @@ RegisterCvars() {
   cvar[MIN_PLAYERS] = create_cvar(
     .name = "tbl_min_players", 
     .string = "7",
-    .flags = FCVAR_SERVER,
+    .flags = FCVAR_NONE,
     .description = "Минимальное количество игроков для балансировки команд",
     .has_min = true, 
     .min_val = 6.0,
@@ -135,7 +135,7 @@ RegisterCvars() {
   cvar[DM_MODE] = create_cvar(
     .name = "tbl_dm_mode", 
     .string = "0",
-    .flags = FCVAR_SERVER,
+    .flags = FCVAR_NONE,
     .description = "Включает баланс по равенству в режиме DM (бесконечный раунд)",
     .has_min = true, 
     .min_val = 0.0,
