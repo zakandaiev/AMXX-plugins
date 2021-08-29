@@ -2,8 +2,10 @@
 #include <amxmisc>
 #include <reapi>
 
+#define AUTO_CFG // автоматическое создание конфига с кварами
+
 // PREPARE DATA
-enum _:pSkillKey {
+enum pSkillKey {
   pId = 0,
   pSkill
 }
@@ -12,23 +14,23 @@ new playerHs[MAX_CLIENTS + 1], playerKills[MAX_CLIENTS + 1], playerDeaths[MAX_CL
 
 new bool:playerToTransfer[MAX_CLIENTS + 1];
 
-new cvarScoreDifference, cvarMinPlayers, cvarNoRound;
+enum CVARS {
+  SCORE_DIFFERENCE,
+  MIN_PLAYERS,
+  DM_MODE
+};
 
-new userMessage_ScreenFade;
+new cvar[CVARS];
 
 // PLUGIN INIT
 public plugin_init() {
-  register_plugin("Team Balance Lite", "1.0", "szawesome");
+  register_plugin("Team Balance Lite", "1.1", "szawesome");
 
   RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true);
   RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn_Pre", false);
   RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false);
-  
-  cvarScoreDifference = register_cvar("tbl_scorediff", "10");
-  cvarMinPlayers = register_cvar("tbl_minplayers", "5");
-  cvarNoRound = register_cvar("tbl_noround", "0");
 
-  userMessage_ScreenFade = get_user_msgid("ScreenFade");
+  RegisterCvars();
 }
 
 // PUBLIC FUNTIONS
@@ -51,7 +53,7 @@ public CBasePlayer_Killed_Post(victim, killer, gibs) {
     return HC_SUPERCEDE;
   }
 
-  if(!get_pcvar_num(cvarNoRound)) {    
+  if(!get_pcvar_num(cvar[DM_MODE])) {    
     playerKills[killer]++;
     playerDeaths[victim]++;
 
@@ -64,7 +66,7 @@ public CBasePlayer_Killed_Post(victim, killer, gibs) {
 }
 
 public CBasePlayer_Spawn_Pre(id) {
-  if(get_pcvar_num(cvarNoRound)) {
+  if(get_pcvar_num(cvar[DM_MODE])) {
     ModeDM_SetPlayerToTranfer(id);
   }
 
@@ -81,7 +83,7 @@ public CSGameRules_RestartRound_Pre() {
     ClearArrays();
   }
 
-  if(!get_pcvar_num(cvarNoRound)) {
+  if(!get_pcvar_num(cvar[DM_MODE])) {
     new difference;
     static nextCheck;
     
@@ -89,17 +91,17 @@ public CSGameRules_RestartRound_Pre() {
     
     GetTeamsScore(difference);
     
-    if(nextCheck <= 0 && difference >= get_pcvar_num(cvarScoreDifference)) {
+    if(nextCheck <= 0 && difference >= get_pcvar_num(cvar[SCORE_DIFFERENCE])) {
       new bestPlayer, worstPlayer, CTNum, TTNum;
       GetBestWorstPlayers(bestPlayer, worstPlayer, CTNum, TTNum);
       
-      new minPlayers = get_pcvar_num(cvarMinPlayers);
+      new minPlayers = get_pcvar_num(cvar[MIN_PLAYERS]);
       if(minPlayers < 6 || minPlayers > 32) {
         minPlayers = 6;
       }
 
       if(CTNum + TTNum >= minPlayers) {
-        nextCheck = get_pcvar_num(cvarScoreDifference);
+        nextCheck = get_pcvar_num(cvar[SCORE_DIFFERENCE]);
 
         playerToTransfer[bestPlayer] = true;
         playerToTransfer[worstPlayer] = true;
@@ -111,6 +113,40 @@ public CSGameRules_RestartRound_Pre() {
 }
 
 // CUSTOM FUNTIONS
+RegisterCvars() {
+  cvar[SCORE_DIFFERENCE] = create_cvar(
+    .name = "tbl_score_diff", 
+    .string = "10",
+    .flags = FCVAR_SERVER,
+    .description = "Разница в счёте команд, при которой произойдет баланс",
+    .has_min = true, 
+    .min_val = 1.0
+  );
+  cvar[MIN_PLAYERS] = create_cvar(
+    .name = "tbl_min_players", 
+    .string = "7",
+    .flags = FCVAR_SERVER,
+    .description = "Минимальное количество игроков для балансировки команд",
+    .has_min = true, 
+    .min_val = 6.0,
+    .has_max = true, 
+    .max_val = 32.0
+  );
+  cvar[DM_MODE] = create_cvar(
+    .name = "tbl_dm_mode", 
+    .string = "0",
+    .flags = FCVAR_SERVER,
+    .description = "Включает баланс по равенству в режиме DM (бесконечный раунд)",
+    .has_min = true, 
+    .min_val = 0.0,
+    .has_max = true, 
+    .max_val = 1.0
+  );
+  #if defined AUTO_CFG
+  AutoExecConfig();
+  #endif
+}
+
 ClearArrays() {
   arrayset(playerHs, 0, MAX_CLIENTS + 1);
   arrayset(playerKills, 0, MAX_CLIENTS + 1);
@@ -184,7 +220,7 @@ GetBestWorstPlayers(&bestPlayer, &worstPlayer, &CTNum, &TTNum) {
     }
   }
 
-  new iMinPlayers = get_pcvar_num(cvarMinPlayers);
+  new iMinPlayers = get_pcvar_num(cvar[MIN_PLAYERS]);
   if(iMinPlayers < 6 || iMinPlayers > 32) iMinPlayers = 6;
   if(CTNum + TTNum < iMinPlayers) return;
 
@@ -226,29 +262,26 @@ TransferPlayer(id) {
         rg_round_respawn(id);
       }*/
       
-      if(!get_pcvar_num(cvarNoRound) && !is_user_bot(id)) {
-        SendNoticeMessage(id);
-        // set_task_ex(0.1, "SendNoticeMessage", .flags = SetTask_Once); // skip reset hud. как тут id игрока передать?
-      } else {
-        SendNoticeMessage(id);
-      }
+      // skip reset hud event
+      new data[1]; data[0] = id;
+      set_task_ex(0.1, "SendNoticeMessage", _, data, 1, SetTask_Once);
     }
   }
 }
 
-public SendNoticeMessage(id) {
-  if(is_user_connected(id) && !is_user_bot(id)) {
-    set_dhudmessage(255, 200, 0, -1.0, -0.29, 2, _, 5.0, 0.07);
+public SendNoticeMessage(data[1]) {
+  if(is_user_connected(data[0]) && !is_user_bot(data[0])) {
+    set_dhudmessage(255, 255, 0, -1.0, -0.29, 2, _, 5.0, 0.07);
 
-    if(get_member(id, m_iTeam) == TEAM_TERRORIST) {
-      screen_fade(id, 255, 0, 0, 100, 1);
-      show_dhudmessage(id, "Вы были переведены за Террористов");
+    if(get_member(data[0], m_iTeam) == TEAM_TERRORIST) {
+      screen_fade(data[0], 255, 0, 0, 100, 1);
+      show_dhudmessage(data[0], "Вы были переведены за Террористов");
     } else {
-      screen_fade(id, 0, 0, 255, 100, 1);
-      show_dhudmessage(id, "Вы были переведены за Контр-Террористов");
+      screen_fade(data[0], 0, 0, 255, 100, 1);
+      show_dhudmessage(data[0], "Вы были переведены за Контр-Террористов");
     }
     
-    client_cmd(id, "spk fvox/bell");
+    client_cmd(data[0], "spk fvox/bell");
   }
 }
 
@@ -261,16 +294,23 @@ Float:get_skill(kills, deaths, headShots) {
   return skill;
 }
 
-stock screen_fade(id, red, green, blue, alfa, durration) {
+stock screen_fade(player, red, green, blue, alfa, durration) {
+  if(bool:(Float:get_member(player, m_blindStartTime) + Float:get_member(player, m_blindFadeTime) >= get_gametime())) {
+    return;
+  }
+
   new dUnits = clamp((durration * (1 << 12)), 0, 0xFFFF);
 
-  message_begin(MSG_ONE_UNRELIABLE, userMessage_ScreenFade, _, id);
-  write_short(dUnits); //Durration
-  write_short(dUnits/2); //Hold
-  write_short(0x0000); // Type
-  write_byte(red);
-  write_byte(green);
-  write_byte(blue);
-  write_byte(alfa);
-  message_end();
+  static userMessage_ScreenFade;
+  if(userMessage_ScreenFade > 0 || (userMessage_ScreenFade = get_user_msgid("ScreenFade"))) {
+    message_begin(MSG_ONE_UNRELIABLE, userMessage_ScreenFade, .player = player);
+    write_short(dUnits); //Durration
+    write_short(dUnits/2); //Hold
+    write_short(0x0000); // Type
+    write_byte(red);
+    write_byte(green);
+    write_byte(blue);
+    write_byte(alfa);
+    message_end();
+  }
 }
