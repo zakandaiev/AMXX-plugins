@@ -4,10 +4,8 @@
 enum any:MENU_DATA {MENU_NAME[128], MENU_CMD[64]};
 
 /* ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ CONFIG START ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ */
-/*** НАЗВАНИЕ МЕНЮ ***/
 #define MENU_TITLE "\r[AWESOMECS.RU]\w Меню сервера"
 
-/*** СТРУКТУРА МЕНЮ ***/
 new const menuData[][MENU_DATA] = {
   {"Информация^n", "say /info"},
 
@@ -26,7 +24,6 @@ new const menuData[][MENU_DATA] = {
   {"Меню возрождений \r[\yСпонсор\r]", "respawnmenu"}
 };
 
-/*** КОМАНДЫ ДЛЯ ОТКРЫТИЯ МЕНЮ ***/
 new const menuCmds[][] =  {
   "say menu",
   "say_team menu",
@@ -36,7 +33,6 @@ new const menuCmds[][] =  {
   "nightvision"
 }
 
-/*** ОПОВЕЩЕНИЕ В ЧАТ ***/
 #define ADVERT
 
 #if defined ADVERT
@@ -89,8 +85,8 @@ public menuIdHandler(id, menu, item) {
     return PLUGIN_HANDLED;
   }
 
-  new key[sizeof menuData], name[128], access, callback;
-  menu_item_getinfo(menu, item, access, key, sizeof key, name, sizeof name - 1, callback);
+  new key[sizeof menuData], name[sizeof menuData], access, callback;
+  menu_item_getinfo(menu, item, access, key, sizeof key, name, sizeof name, callback);
 
   client_cmd(id, menuData[item][MENU_CMD]);
 
