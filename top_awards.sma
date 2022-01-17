@@ -37,7 +37,7 @@ public plugin_init() {
 	RegisterCvars();
 
 	if(strlen(cvar[ALERT])) {
-		new cvCount[1]; num_to_str(cvar[COUNT], cvCount, sizeof cvCount);
+		new cvCount[32]; num_to_str(cvar[COUNT], cvCount, sizeof cvCount);
 		replace_all(cvar[ALERT], charsmax(cvar[ALERT]), "\n", "^n");
 		replace_all(cvar[ALERT], charsmax(cvar[ALERT]), "\d", cvCount);
 		RegisterHookChain(RG_CBasePlayer_OnSpawnEquip, "CBasePlayer_OnSpawnEquip_Post", true);
