@@ -123,9 +123,9 @@ stock screen_fade(player, red, green, blue, alfa, durration) {
   static userMessage_ScreenFade;
   if(userMessage_ScreenFade > 0 || (userMessage_ScreenFade = get_user_msgid("ScreenFade"))) {
     message_begin(MSG_ONE_UNRELIABLE, userMessage_ScreenFade, .player = player);
-    write_short(dUnits); //Durration
-    write_short(dUnits/2); //Hold
-    write_short(0x0000); // Type
+    write_short(dUnits);
+    write_short(dUnits/2);
+    write_short(0x0000);
     write_byte(red);
     write_byte(green);
     write_byte(blue);
