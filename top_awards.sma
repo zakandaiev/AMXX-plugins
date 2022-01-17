@@ -39,21 +39,21 @@ public CheckStats(id) {
   new cFlags[32]; get_pcvar_string(cvar[FLAGS], cFlags, sizeof cFlags);
   new addFlags = read_flags(cFlags);
 
-  if (pFlags & addFlags || pFlags & addFlags == addFlags) {
+  if(pFlags & addFlags || pFlags & addFlags == addFlags) {
     isAlertShowed[id] = true;
     return HC_CONTINUE;
   }
 
   new ranks = get_pcvar_num(cvar[RANKS]);
 
-  if (!ranks) {
+  if(!ranks) {
     return HC_CONTINUE;
   }
 
   new pStats[8], pBodyHits[8];
   new pRank = get_user_stats(id, pStats, pBodyHits);
 
-  if (pRank && pRank <= ranks) {
+  if(pRank && pRank <= ranks) {
     set_user_flags(id, pFlags | addFlags);
     isTopPlayer[id] = true;
   }
