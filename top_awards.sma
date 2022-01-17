@@ -1,8 +1,23 @@
 #include <amxmodx>
-#include <csstats>
 #include <reapi>
 
+/* ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ CONFIG START ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ */
 #define AUTO_CFG // автоматическое создание конфига с кварами
+// #define CSSTATS_MYSQL // на сервере установлена статистика CsStats MySQL от SKAJIbnEJIb
+// #define CSSTATSX_SQL // на сервере установлена статистика CSstatsX SQL от serfreeman1337
+/*
+	Если закомментировать #define CSSTATS_MYSQL и #define CSSTATSX_SQL
+	то плагин будет работать со стандартной статистикой CSX (cstrike/addons/amxmodx/data/csstats.dat)
+*/
+/* ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ CONFIG END ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ */
+
+#if defined CSSTATS_MYSQL
+	native csstats_get_user_stats(id, stats[22]);
+#elseif defined CSSTATSX_SQL
+	native get_user_stats_sql(index, stats[8], bodyhits[8]);
+#else
+	#include <csstats>
+#endif
 
 enum any:CVARS {
 	COUNT,
@@ -17,7 +32,7 @@ new cvar[CVARS];
 new bool:isTopPlayer[MAX_CLIENTS + 1], bool:isAlertShowed[MAX_CLIENTS + 1];
 
 public plugin_init() {
-	register_plugin("Top Awards", "1.0.0", "szawesome");
+	register_plugin("Top Awards", "1.1.0", "szawesome");
 
 	RegisterCvars();
 
@@ -54,10 +69,21 @@ public CheckStats(id) {
 		return HC_CONTINUE;
 	}
 
-	new pStats[8], pBodyHits[8];
-	new pRank = get_user_stats(id, pStats, pBodyHits);
+	#if defined CSSTATS_MYSQL
+		new pStats[22];
+	#else
+		new pStats[8], pBodyHits[8];
+	#endif
 
-	if(pRank && pRank <= cvar[COUNT]) {
+	#if defined CSSTATS_MYSQL
+		new pRank = csstats_get_user_stats(id, pStats);
+	#elseif defined CSSTATSX_SQL
+		new pRank = get_user_stats_sql(id, pStats, pBodyHits);
+	#else
+		new pRank = get_user_stats(id, pStats, pBodyHits);
+	#endif
+
+	if(pRank && pRank > 0 && pRank <= cvar[COUNT]) {
 		set_user_flags(id, pFlags | addFlags);
 		isTopPlayer[id] = true;
 	}
