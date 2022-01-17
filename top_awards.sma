@@ -4,11 +4,12 @@
 
 #define AUTO_CFG // автоматическое создание конфига с кварами
 
-enum CVARS {
-  RANKS,
-  FLAGS,
-  ALERT,
-  ALERT_COLOR
+enum any:CVARS {
+	COUNT,
+	FLAGS[32],
+	ALERT[192],
+	ALERT_COLOR[11],
+	ALERT_SOUND[64]
 };
 
 new cvar[CVARS];
@@ -16,120 +17,148 @@ new cvar[CVARS];
 new bool:isTopPlayer[MAX_CLIENTS + 1], bool:isAlertShowed[MAX_CLIENTS + 1];
 
 public plugin_init() {
-  register_plugin("Top Awards", "1.0", "szawesome");
+	register_plugin("Top Awards", "1.0.0", "szawesome");
 
-  RegisterCvars();
+	RegisterCvars();
 
-  new alert[128];
-  get_pcvar_string(cvar[ALERT], alert, sizeof alert);
-  if(strlen(alert)) {
-    RegisterHookChain(RG_CBasePlayer_OnSpawnEquip, "CBasePlayer_OnSpawnEquip_Post", true);
-  }
+	if(strlen(cvar[ALERT])) {
+		new cvCount[1]; num_to_str(cvar[COUNT], cvCount, sizeof cvCount);
+		replace_all(cvar[ALERT], charsmax(cvar[ALERT]), "\n", "^n");
+		replace_all(cvar[ALERT], charsmax(cvar[ALERT]), "\d", cvCount);
+		RegisterHookChain(RG_CBasePlayer_OnSpawnEquip, "CBasePlayer_OnSpawnEquip_Post", true);
+	}
+}
+
+public plugin_precache() {
+	if(strlen(cvar[ALERT_SOUND])) {
+		precache_sound(cvar[ALERT_SOUND]);
+	}
 }
 
 public client_putinserver(id) {
-  isTopPlayer[id] = false;
-  isAlertShowed[id] = false;
+	isTopPlayer[id] = false;
+	isAlertShowed[id] = false;
 
-  set_task(0.5, "CheckStats", id);
+	set_task(0.5, "CheckStats", id);
 }
 
 public CheckStats(id) {
-  new pFlags = get_user_flags(id);
-  new cFlags[32]; get_pcvar_string(cvar[FLAGS], cFlags, sizeof cFlags);
-  new addFlags = read_flags(cFlags);
+	new pFlags = get_user_flags(id);
+	new addFlags = read_flags(cvar[FLAGS]);
 
-  if(pFlags & addFlags || pFlags & addFlags == addFlags) {
-    isAlertShowed[id] = true;
-    return HC_CONTINUE;
-  }
+	if(pFlags & addFlags || pFlags & addFlags == addFlags) {
+		return HC_CONTINUE;
+	}
 
-  new ranks = get_pcvar_num(cvar[RANKS]);
+	if(cvar[COUNT] <= 0) {
+		return HC_CONTINUE;
+	}
 
-  if(!ranks) {
-    return HC_CONTINUE;
-  }
+	new pStats[8], pBodyHits[8];
+	new pRank = get_user_stats(id, pStats, pBodyHits);
 
-  new pStats[8], pBodyHits[8];
-  new pRank = get_user_stats(id, pStats, pBodyHits);
+	if(pRank && pRank <= cvar[COUNT]) {
+		set_user_flags(id, pFlags | addFlags);
+		isTopPlayer[id] = true;
+	}
 
-  if(pRank && pRank <= ranks) {
-    set_user_flags(id, pFlags | addFlags);
-    isTopPlayer[id] = true;
-  }
-
-  return HC_CONTINUE;
+	return HC_CONTINUE;
 }
 
 public CBasePlayer_OnSpawnEquip_Post(player, bool:addDefault, bool:equipGame) {
-  if(is_user_alive(player) && isTopPlayer[player] && !isAlertShowed[player]) {
-    new alert[128]; get_pcvar_string(cvar[ALERT], alert, sizeof alert);
-    new ranks[6]; get_pcvar_string(cvar[RANKS], ranks, sizeof ranks);
+	if(is_user_alive(player) && isTopPlayer[player] && !isAlertShowed[player]) {
+		new red[5], green[5], blue[5], cRed, cGreen, cBlue;
 
-    replace_all(alert, charsmax(alert), "\n", "^n");
-    replace_all(alert, charsmax(alert), "\d", ranks);
-    
-    new alert_color[11]; get_pcvar_string(cvar[ALERT_COLOR], alert_color, sizeof alert_color);
-    new red[5], green[5], blue[5]; parse(alert_color, red, 4, green, 4, blue, 4);
+		parse(cvar[ALERT_COLOR], red, 4, green, 4, blue, 4);
+		cRed = str_to_num(red);
+		cGreen = str_to_num(green);
+		cBlue = str_to_num(blue);
 
-    screen_fade(player, str_to_num(red), str_to_num(green), str_to_num(blue), 100, 1);
-    set_dhudmessage(str_to_num(red), str_to_num(green), str_to_num(blue), -1.0, -0.29, 2, _, 5.0, 0.07);
-    show_dhudmessage(player, alert);
-    client_cmd(player, "spk fvox/bell");
+		screen_fade(player, cRed, cGreen, cBlue, 100, 1);
+		set_dhudmessage(cRed, cGreen, cBlue, -1.0, -0.29, 2, _, 5.0, 0.07);
+		show_dhudmessage(player, cvar[ALERT]);
+		if(strlen(cvar[ALERT_SOUND])) {
+			rg_send_audio(player, cvar[ALERT_SOUND]);
+		}
 
-    isAlertShowed[player] = true;
-  }
+		isAlertShowed[player] = true;
+	}
 }
 
 RegisterCvars() {
-  cvar[RANKS] = create_cvar(
-    .name = "top_awards_count", 
-    .string = "3",
-    .flags = FCVAR_NONE,
-    .description = "Выдавать флаги игрокам с 1 по N место в топе",
-    .has_min = true,
-    .min_val = 1.0
-  );
-  cvar[FLAGS] = create_cvar(
-    .name = "top_awards_flags", 
-    .string = "t",
-    .flags = FCVAR_NONE,
-    .description = "Выдаваемые флаги. Можно сочитать, например: bt"
-  );
-  cvar[ALERT] = create_cvar(
-    .name = "top_awards_alert",
-    .string = "Бесплатная VIP активирована\nТы в ТОП-\d лучших игроков сервера",
-    .flags = FCVAR_NONE,
-    .description = "Выводить сообщение о активации привилегии?^nОставьте пустым чтобы не выводить"
-  );
-  cvar[ALERT_COLOR] = create_cvar(
-    .name = "top_awards_alert_color",
-    .string = "255 255 0",
-    .flags = FCVAR_NONE,
-    .description = "Цвет сообщения и затемнения экрана. Формат: R G B"
-  );
-  #if defined AUTO_CFG
-  AutoExecConfig();
-  #endif
+	bind_pcvar_num(
+		create_cvar(
+			.name = "top_awards_count", 
+			.string = "3",
+			.flags = FCVAR_NONE,
+			.description = "Выдавать флаги TOP-N игрокам",
+			.has_min = true,
+			.min_val = 1.0
+		),
+		cvar[COUNT]
+	);
+	bind_pcvar_string(
+		create_cvar(
+			.name = "top_awards_flags", 
+			.string = "t",
+			.flags = FCVAR_NONE,
+			.description = "Выдаваемые флаги. Можно сочитать, например: bt"
+		),
+		cvar[FLAGS],
+		charsmax(cvar[FLAGS])
+	);
+	bind_pcvar_string(
+		create_cvar(
+			.name = "top_awards_alert",
+			.string = "Бесплатная VIP активирована\nТы в ТОП-\d лучших игроков сервера",
+			.flags = FCVAR_NONE,
+			.description = "Выводить сообщение о активации привилегии?^nОставьте пустым чтобы не выводить^n\n - перенос строки^n\d - число из квара top_awards_count"
+		),
+		cvar[ALERT],
+		charsmax(cvar[ALERT])
+	);
+	bind_pcvar_string(
+		create_cvar(
+			.name = "top_awards_alert_color",
+			.string = "255 255 0",
+			.flags = FCVAR_NONE,
+			.description = "Цвет сообщения и затемнения экрана. Формат: R G B"
+		),
+		cvar[ALERT_COLOR],
+		charsmax(cvar[ALERT_COLOR])
+	);
+	bind_pcvar_string(
+		create_cvar(
+			.name = "top_awards_alert_sound",
+			.string = "fvox/bell.wav",
+			.flags = FCVAR_NONE,
+			.description = "Воспроизводить звук при активации привилегии?^nОставьте пустым чтобы не воспроизводить^nЗвук должен лежать в папке sound"
+		),
+		cvar[ALERT_SOUND],
+		charsmax(cvar[ALERT_SOUND])
+	);
+	#if defined AUTO_CFG
+		AutoExecConfig();
+	#endif
 }
 
 stock screen_fade(player, red, green, blue, alfa, durration) {
-  if(bool:(Float:get_member(player, m_blindStartTime) + Float:get_member(player, m_blindFadeTime) >= get_gametime())) {
-    return;
-  }
+	if(bool:(Float:get_member(player, m_blindStartTime) + Float:get_member(player, m_blindFadeTime) >= get_gametime())) {
+		return;
+	}
 
-  new dUnits = clamp((durration * (1 << 12)), 0, 0xFFFF);
+	new dUnits = clamp((durration * (1 << 12)), 0, 0xFFFF);
 
-  static userMessage_ScreenFade;
-  if(userMessage_ScreenFade > 0 || (userMessage_ScreenFade = get_user_msgid("ScreenFade"))) {
-    message_begin(MSG_ONE_UNRELIABLE, userMessage_ScreenFade, .player = player);
-    write_short(dUnits);
-    write_short(dUnits/2);
-    write_short(0x0000);
-    write_byte(red);
-    write_byte(green);
-    write_byte(blue);
-    write_byte(alfa);
-    message_end();
-  }
+	static userMessage_ScreenFade;
+	if(userMessage_ScreenFade > 0 || (userMessage_ScreenFade = get_user_msgid("ScreenFade"))) {
+		message_begin(MSG_ONE_UNRELIABLE, userMessage_ScreenFade, .player = player);
+		write_short(dUnits);
+		write_short(dUnits/2);
+		write_short(0x0000);
+		write_byte(red);
+		write_byte(green);
+		write_byte(blue);
+		write_byte(alfa);
+		message_end();
+	}
 }
