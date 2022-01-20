@@ -3,9 +3,9 @@
 
 /* ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ CONFIG START ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ */
 #define AUTO_CFG // автоматическое создание конфига с кварами
-// #define CSSTATS_MYSQL // на сервере установлена статистика CsStats MySQL от SKAJIbnEJIb
-// #define CSSTATSX_SQL // на сервере установлена статистика CSstatsX SQL от serfreeman1337
-// #define CMSSTATS_MYSQL // на сервере установлена статистика CMSStats MySQL от zhorzh78
+// #define CSSTATS_MYSQL // раскомментируйте если на сервере установлена статистика CsStats MySQL от SKAJIbnEJIb
+// #define CSSTATSX_SQL // раскомментируйте если на сервере установлена статистика CSstatsX SQL от serfreeman1337
+// #define CMSSTATS_MYSQL // раскомментируйте если на сервере установлена статистика CMSStats MySQL от zhorzh78
 /*
 	Если закомментировать все сразу #define CSSTATS_MYSQL и #define CSSTATSX_SQL и #define CMSSTATS_MYSQL
 	то плагин будет работать со стандартной статистикой CSX (cstrike/addons/amxmodx/data/csstats.dat)
@@ -25,46 +25,53 @@
 enum any:CVARS {
 	COUNT,
 	FLAGS[32],
+	FLAGS_BIT,
 	ALERT[192],
-	ALERT_COLOR[11],
+	ALERT_COLOR[12],
+	ALERT_COLOR_R,
+	ALERT_COLOR_G,
+	ALERT_COLOR_B,
+	ALERT_COORDS[32],
+	Float:ALERT_COORDS_X,
+	Float:ALERT_COORDS_Y,
 	ALERT_SOUND[64]
 };
 
-new cvar[CVARS];
+enum bool:PLAYER_DATA {
+	IS_TOP,
+	IS_ALERT_SHOWED
+};
 
-new bool:isTopPlayer[MAX_CLIENTS + 1], bool:isAlertShowed[MAX_CLIENTS + 1];
+new cvar[CVARS], player[MAX_CLIENTS + 1][PLAYER_DATA];
 
 public plugin_init() {
-	register_plugin("Top Awards", "1.1.1", "szawesome");
-
-	RegisterCvars();
+	register_plugin("Top Awards", "1.2.0", "szawesome");
 
 	if(strlen(cvar[ALERT])) {
-		new cvCount[32]; num_to_str(cvar[COUNT], cvCount, sizeof cvCount);
-		replace_all(cvar[ALERT], charsmax(cvar[ALERT]), "\n", "^n");
-		replace_all(cvar[ALERT], charsmax(cvar[ALERT]), "\d", cvCount);
 		RegisterHookChain(RG_CBasePlayer_OnSpawnEquip, "CBasePlayer_OnSpawnEquip_Post", true);
 	}
 }
 
 public plugin_precache() {
+	RegisterCvars();
+	ValueCvars();
+
 	if(strlen(cvar[ALERT_SOUND])) {
 		precache_sound(cvar[ALERT_SOUND]);
 	}
 }
 
 public client_putinserver(id) {
-	isTopPlayer[id] = false;
-	isAlertShowed[id] = false;
+	player[id][IS_TOP] = false;
+	player[id][IS_ALERT_SHOWED] = false;
 
 	set_task(0.5, "CheckStats", id);
 }
 
 public CheckStats(id) {
 	new pFlags = get_user_flags(id);
-	new addFlags = read_flags(cvar[FLAGS]);
 
-	if(pFlags & addFlags || pFlags & addFlags == addFlags) {
+	if(pFlags & cvar[FLAGS_BIT] || pFlags & cvar[FLAGS_BIT] == cvar[FLAGS_BIT]) {
 		return HC_CONTINUE;
 	}
 
@@ -89,30 +96,23 @@ public CheckStats(id) {
 	#endif
 
 	if(pRank && 0 < pRank <= cvar[COUNT]) {
-		set_user_flags(id, pFlags | addFlags);
-		isTopPlayer[id] = true;
+		set_user_flags(id, pFlags | cvar[FLAGS_BIT]);
+		player[id][IS_TOP] = true;
 	}
 
 	return HC_CONTINUE;
 }
 
-public CBasePlayer_OnSpawnEquip_Post(player, bool:addDefault, bool:equipGame) {
-	if(is_user_alive(player) && isTopPlayer[player] && !isAlertShowed[player]) {
-		new red[5], green[5], blue[5], cRed, cGreen, cBlue;
-
-		parse(cvar[ALERT_COLOR], red, 4, green, 4, blue, 4);
-		cRed = str_to_num(red);
-		cGreen = str_to_num(green);
-		cBlue = str_to_num(blue);
-
-		screen_fade(player, cRed, cGreen, cBlue, 100, 1);
-		set_dhudmessage(cRed, cGreen, cBlue, -1.0, -0.29, 2, _, 5.0, 0.07);
-		show_dhudmessage(player, cvar[ALERT]);
+public CBasePlayer_OnSpawnEquip_Post(id, bool:addDefault, bool:equipGame) {
+	if(is_user_alive(id) && !is_user_bot(id) && player[id][IS_TOP] && !player[id][IS_ALERT_SHOWED]) {
+		screen_fade(id, cvar[ALERT_COLOR_R], cvar[ALERT_COLOR_G], cvar[ALERT_COLOR_B], 100, 1);
+		set_dhudmessage(cvar[ALERT_COLOR_R], cvar[ALERT_COLOR_G], cvar[ALERT_COLOR_B], cvar[ALERT_COORDS_X], cvar[ALERT_COORDS_Y], 2, _, 5.0, 0.07);
+		show_dhudmessage(id, cvar[ALERT]);
 		if(strlen(cvar[ALERT_SOUND])) {
-			rg_send_audio(player, cvar[ALERT_SOUND]);
+			rg_send_audio(id, cvar[ALERT_SOUND]);
 		}
 
-		isAlertShowed[player] = true;
+		player[id][IS_ALERT_SHOWED] = true;
 	}
 }
 
@@ -160,6 +160,16 @@ RegisterCvars() {
 	);
 	bind_pcvar_string(
 		create_cvar(
+			.name = "top_awards_alert_coords",
+			.string = "-1.0 -0.29",
+			.flags = FCVAR_NONE,
+			.description = "Координаты сообщения. Формат: X Y^nУказывается % смещения разделённый на 100^n-1.0 - по центру"
+		),
+		cvar[ALERT_COORDS],
+		charsmax(cvar[ALERT_COORDS])
+	);
+	bind_pcvar_string(
+		create_cvar(
 			.name = "top_awards_alert_sound",
 			.string = "fvox/bell.wav",
 			.flags = FCVAR_NONE,
@@ -173,8 +183,34 @@ RegisterCvars() {
 	#endif
 }
 
-stock screen_fade(player, red, green, blue, alfa, durration) {
-	if(bool:(Float:get_member(player, m_blindStartTime) + Float:get_member(player, m_blindFadeTime) >= get_gametime())) {
+ValueCvars() {
+	// FLAGS BITS
+	cvar[FLAGS_BIT] = read_flags(cvar[FLAGS]);
+	// FORMAT ALERT MESSAGE
+	if(strlen(cvar[ALERT])) {
+		new cvCount[16]; num_to_str(cvar[COUNT], cvCount, sizeof cvCount);
+		replace_all(cvar[ALERT], charsmax(cvar[ALERT]), "\n", "^n");
+		replace_all(cvar[ALERT], charsmax(cvar[ALERT]), "\d", cvCount);
+	}
+	// PARSE COLORS
+	new red[4], green[4], blue[4];
+	parse(cvar[ALERT_COLOR], red, charsmax(red), green, charsmax(green), blue, charsmax(blue));
+	cvar[ALERT_COLOR_R] = str_to_num(red);
+	cvar[ALERT_COLOR_G] = str_to_num(green);
+	cvar[ALERT_COLOR_B] = str_to_num(blue);
+	// PARSE COORDS
+	new coord_x[16], coord_y[16];
+	parse(cvar[ALERT_COORDS], coord_x, charsmax(coord_x), coord_y, charsmax(coord_y));
+	cvar[ALERT_COORDS_X] = str_to_float(coord_x);
+	cvar[ALERT_COORDS_Y] = str_to_float(coord_y);
+}
+
+stock screen_fade(id, red, green, blue, alfa, durration) {
+	if(!is_user_connected(id) || is_user_bot(id)) {
+		return;
+	}
+
+	if(bool:(Float:get_member(id, m_blindStartTime) + Float:get_member(id, m_blindFadeTime) >= get_gametime())) {
 		return;
 	}
 
@@ -182,7 +218,7 @@ stock screen_fade(player, red, green, blue, alfa, durration) {
 
 	static userMessage_ScreenFade;
 	if(userMessage_ScreenFade > 0 || (userMessage_ScreenFade = get_user_msgid("ScreenFade"))) {
-		message_begin(MSG_ONE_UNRELIABLE, userMessage_ScreenFade, .player = player);
+		message_begin(MSG_ONE_UNRELIABLE, userMessage_ScreenFade, .player = id);
 		write_short(dUnits);
 		write_short(dUnits/2);
 		write_short(0x0000);
