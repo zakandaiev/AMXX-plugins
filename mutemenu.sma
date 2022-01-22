@@ -3,6 +3,7 @@
 #include <fakemeta>
 
 /* ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ CONFIG START ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ */
+#define MENU_NUBER_COLOR "\w" // цвет нумерации меню: \w - белый, \y - желтый, \r - красный, \d - серый
 #define LANG_NAME "mute_menu.txt" // название lang файла
 
 new const menuCmds[][] = {
@@ -17,7 +18,7 @@ new const menuCmds[][] = {
 new cvar_alltalk, bool:playerMutes[MAX_PLAYERS + 1][MAX_PLAYERS + 1]; // [reciever][sender]
 
 public plugin_init() {
-	register_plugin("Mute Menu", "1.0.0", "szawesome");
+	register_plugin("Mute Menu", "1.0.1", "szawesome");
 
 	register_forward(FM_Voice_SetClientListening, "CBasePlayer_SetClientListening");
 
@@ -100,7 +101,7 @@ ShowPlayersMenu(id, page = 0) {
 
 	menu_setprop(menu, MPROP_PERPAGE, 7);
 	menu_setprop(menu, MPROP_EXIT, MEXIT_ALL);
-	menu_setprop(menu, MPROP_NUMBER_COLOR, "\w");
+	menu_setprop(menu, MPROP_NUMBER_COLOR, MENU_NUBER_COLOR);
 
 	return menu_display(id, menu, page);
 }
