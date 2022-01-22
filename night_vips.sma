@@ -2,6 +2,7 @@
 #include <reapi>
 
 #define AUTO_CFG // автоматическое создание конфига с кварами
+// #define FORCE_FLAGS // раскомментируйте если есть проблемы с совместимостью с другими плагинами - принудительно выдавать флаги игрокам перед началом нового раунда
 
 enum any:CVARS {
 	TIME[12],
@@ -19,7 +20,8 @@ enum any:CVARS {
 	Float:ALERT_COORDS_X,
 	Float:ALERT_COORDS_Y,
 	ALERT_SOUND[64],
-	GAMENAME[32]
+	GAMENAME[32],
+	PAUSE_PLUGINS[512]
 };
 
 enum bool:PLAYER_DATA {
@@ -31,22 +33,22 @@ enum bool:PLAYER_DATA {
 enum any:GAME_DATA {
 	bool:IS_NIGHT,
 	GAMENAME_OLD[32],
-	bool:IS_GAMENAME_CHANGED
+	bool:IS_GAMENAME_CHANGED,
+	bool:IS_PAUSE_PLUGINS
 };
 
 new cvar[CVARS], player[MAX_CLIENTS + 1][PLAYER_DATA], game[GAME_DATA];
 
 public plugin_init() {
-	register_plugin("Night VIPs", "1.0.0", "szawesome");
+	register_plugin("Night VIPs", "1.1.0", "szawesome");
 
 	RegisterHookChain(RG_RoundEnd, "RG_RoundEnd_Post", true);
 	if(strlen(cvar[ALERT]) || strlen(cvar[ALERT_OFF])) {
 		RegisterHookChain(RG_CBasePlayer_OnSpawnEquip, "CBasePlayer_OnSpawnEquip_Post", true);
 	}
 
-	get_member_game(m_GameDesc, game[GAMENAME_OLD], charsmax(game[GAMENAME_OLD]));
 	game[IS_GAMENAME_CHANGED] = false;
-	change_gamename();
+	game[IS_PAUSE_PLUGINS] = false;
 }
 
 public plugin_precache() {
@@ -69,6 +71,7 @@ public client_putinserver(id) {
 
 public RG_RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event, Float:tmDelay) {
 	CheckForNight();
+	pause_plugins();
 	change_gamename();
 	for(new player = 1; player <= MaxClients; player++) {
 		if(is_user_connected(player) && !is_user_hltv(player)) {
@@ -180,6 +183,16 @@ RegisterCvars() {
 		cvar[GAMENAME],
 		charsmax(cvar[GAMENAME])
 	);
+	bind_pcvar_string(
+		create_cvar(
+			.name = "night_vips_pause_plugins",
+			.string = "",
+			.flags = FCVAR_NONE,
+			.description = "Список плагинов, которые нужно ставить на паузу^nУказывать через пробел^nПример: ^"plugin_1.amxx plugin_2.amxx^""
+		),
+		cvar[PAUSE_PLUGINS],
+		charsmax(cvar[PAUSE_PLUGINS])
+	);
 	#if defined AUTO_CFG
 		AutoExecConfig();
 	#endif
@@ -243,7 +256,12 @@ AwardPlayer(id) {
 		remove_user_flags(id, cvar[FLAGS_BIT]);
 		player[id][IS_AWARDED] = false;
 		return true;
-	} else if(!game[IS_NIGHT] || player[id][IS_AWARDED]) {
+	}
+	#if defined FORCE_FLAGS
+	else if(!game[IS_NIGHT]) {
+	#else
+	else if(!game[IS_NIGHT] || player[id][IS_AWARDED]) {
+	#endif
 		return false;
 	}
 
@@ -294,11 +312,43 @@ stock change_gamename() {
 		return;
 	}
 
+	if(!game[IS_GAMENAME_CHANGED]) {
+		get_member_game(m_GameDesc, game[GAMENAME_OLD], charsmax(game[GAMENAME_OLD]));
+	}
+
 	if(game[IS_NIGHT] && !game[IS_GAMENAME_CHANGED]) {
 		set_member_game(m_GameDesc, cvar[GAMENAME]);
 		game[IS_GAMENAME_CHANGED] = true;
 	} else if(!game[IS_NIGHT] && game[IS_GAMENAME_CHANGED]) {
 		set_member_game(m_GameDesc, game[GAMENAME_OLD]);
 		game[IS_GAMENAME_CHANGED] = false;
+	}
+}
+
+stock pause_plugins() {
+	if(!strlen(cvar[PAUSE_PLUGINS])) {
+		return;
+	}
+
+	new plugin_name[128], arg_pos, bool:updateGameState_isPausePlugins = false;
+	while(arg_pos != -1) {
+		arg_pos = argparse(cvar[PAUSE_PLUGINS], arg_pos, plugin_name, charsmax(plugin_name));
+		if(arg_pos != -1) {
+			if(is_plugin_loaded(plugin_name, true) != -1) {
+				if(game[IS_NIGHT] && !game[IS_PAUSE_PLUGINS]) {
+					pause("ac", plugin_name);
+					updateGameState_isPausePlugins = true;
+				} else if(!game[IS_NIGHT] && game[IS_PAUSE_PLUGINS]) {
+					unpause("ac", plugin_name);
+					updateGameState_isPausePlugins = false;
+				}
+			}
+		}
+	}
+
+	if(updateGameState_isPausePlugins) {
+		game[IS_PAUSE_PLUGINS] = true;
+	} else {
+		game[IS_PAUSE_PLUGINS] = false;
 	}
 }
