@@ -1,10 +1,14 @@
 #include <amxmodx>
 #include <amxmisc>
-#include <fakemeta>
+#tryinclude <reapi>
+#if !defined _reapi_included
+	#include <fakemeta>
+#endif
 
 /* ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ CONFIG START ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ */
 #define MENU_NUBER_COLOR "\w" // цвет нумерации меню: \w - белый, \y - желтый, \r - красный, \d - серый
 #define LANG_NAME "mute_menu.txt" // название lang файла
+// #define LANG_PLAYER id // расскомментируйте если мультиязычность работает некорректно (появится предупреждение при компиляции плагина, но это на его работу не повлияет)
 
 new const menuCmds[][] = {
 	"mute",
@@ -15,12 +19,18 @@ new const menuCmds[][] = {
 }
 /* ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ CONFIG END ■■■■■■■■■■■■■■■■■■■■■■■■■■■■ */
 
-new cvar_alltalk, bool:playerMutes[MAX_PLAYERS + 1][MAX_PLAYERS + 1]; // [reciever][sender]
+new cvar_alltalk,
+		bool:playerMutes[MAX_PLAYERS + 1][MAX_PLAYERS + 1], // [reciever][sender]
+		bool:playerMuteAll[MAX_PLAYERS + 1];
 
 public plugin_init() {
-	register_plugin("Mute Menu", "1.0.0", "szawesome");
+	register_plugin("Mute Menu", "1.1.0", "szawesome");
 
-	register_forward(FM_Voice_SetClientListening, "CBasePlayer_SetClientListening");
+	#if defined _reapi_included
+		RegisterHookChain(RG_CSGameRules_CanPlayerHearPlayer, "CanPlayerHearPlayer_Pre", false);
+	#else
+		register_forward(FM_Voice_SetClientListening, "SetClientListening_Pre", false);
+	#endif
 
 	for(new i = 0; i < sizeof menuCmds; i++) {
 		register_clcmd(menuCmds[i], "ClCmd_ShowPlayersMenu");
@@ -33,26 +43,39 @@ public plugin_init() {
 }
 
 public client_putinserver(id) {
-	ClearMutesList(id);
-}
-
-public CBasePlayer_SetClientListening(receiver, sender, listen) {
-	if(receiver == sender) {
-		return FMRES_IGNORED;
-	}
-	
-	if(playerMutes[receiver][sender]) {
-		engfunc(EngFunc_SetClientListening, receiver, sender, 0);
-		return FMRES_SUPERCEDE;
-	}
-
-	return FMRES_IGNORED;
-}
-
-ClearMutesList(id) {
-	for(new i = 0; i <= MaxClients; ++i) {
+	playerMuteAll[id] = false;
+	for(new i = 1; i <= MaxClients; i++) {
 		playerMutes[id][i] = false;
+		if(playerMuteAll[i]) {
+			playerMutes[i][id] = true;
+		} else {
+			playerMutes[i][id] = false;
+		}
 	}
+}
+
+#if defined _reapi_included
+public CanPlayerHearPlayer_Pre(receiver, sender, bool:listen) {
+#else
+public SetClientListening_Pre(receiver, sender, bool:listen) {
+#endif
+	if(	receiver != sender && is_user_connected(receiver) & is_user_connected(sender)
+			&& (playerMutes[receiver][sender] || playerMuteAll[receiver])
+		) {
+		#if defined _reapi_included
+			SetHookChainReturn(ATYPE_BOOL, false);
+			return HC_SUPERCEDE;
+		#else
+			engfunc(EngFunc_SetClientListening, receiver, sender, false);
+			return FMRES_SUPERCEDE;
+		#endif
+	}
+
+	#if defined _reapi_included
+		return HC_CONTINUE;
+	#else
+		return FMRES_IGNORED;
+	#endif
 }
 
 public ClCmd_ShowPlayersMenu(id) {
@@ -68,10 +91,16 @@ ShowPlayersMenu(id, page = 0) {
 		return PLUGIN_HANDLED;
 	}
 
-	new menu, menuTitle[64];
+	new menu, menuTitle[64], menuItem_muteAll[64];
 	formatex(menuTitle, charsmax(menuTitle), "%L", LANG_PLAYER, "MM_MENU_TITLE");
+	if(playerMuteAll[id]) {
+		formatex(menuItem_muteAll, charsmax(menuItem_muteAll), "%L %L^n", LANG_PLAYER, "MM_MENU_ITEM_ALL", LANG_PLAYER, "MM_MENU_LABEL_GAGGED");
+	} else {
+		formatex(menuItem_muteAll, charsmax(menuItem_muteAll), "%L^n", LANG_PLAYER, "MM_MENU_ITEM_ALL");
+	}
 
 	menu = menu_create(menuTitle, "MenuHandler");
+	menu_additem(menu, menuItem_muteAll, "mute_all");
 
 	new players[MAX_PLAYERS], playersCount;
 
@@ -102,6 +131,9 @@ ShowPlayersMenu(id, page = 0) {
 	menu_setprop(menu, MPROP_PERPAGE, 7);
 	menu_setprop(menu, MPROP_EXIT, MEXIT_ALL);
 	menu_setprop(menu, MPROP_NUMBER_COLOR, MENU_NUBER_COLOR);
+	menu_setprop(menu, MPROP_BACKNAME, fmt("%L", LANG_PLAYER, "BACK"));
+	menu_setprop(menu, MPROP_NEXTNAME, fmt("%L", LANG_PLAYER, "MORE"));
+	menu_setprop(menu, MPROP_EXITNAME, fmt("%L", LANG_PLAYER, "EXIT"));
 
 	return menu_display(id, menu, page);
 }
@@ -120,10 +152,17 @@ public MenuHandler(id, menu, item) {
 	new data[16], name[64], access, callback;
 	menu_item_getinfo(menu, item, access, data, charsmax(data), name, charsmax(name), callback);
 
-	new selectedPlayer = str_to_num(data);
-
-	playerMutes[id][selectedPlayer] = !playerMutes[id][selectedPlayer];
-	client_print_color(id, print_team_red, "%L", LANG_PLAYER, "MM_ALERT_CHAT", LANG_PLAYER, playerMutes[id][selectedPlayer] ? "MM_ALERT_OPTION_SET" : "MM_ALERT_OPTION_UNSET", selectedPlayer);
+	if(equal(data, "mute_all")) {
+		playerMuteAll[id] = !playerMuteAll[id];
+		for(new i = 1; i <= MaxClients; i++) {
+			playerMutes[id][i] = playerMuteAll[id];
+		}
+		client_print_color(id, print_team_red, "%L", LANG_PLAYER, playerMuteAll[id] ? "MM_ALERT_CHAT_ALL_SET" : "MM_ALERT_CHAT_ALL_UNSET");
+	} else {
+		new selectedPlayer = str_to_num(data);
+		playerMutes[id][selectedPlayer] = !playerMutes[id][selectedPlayer];
+		client_print_color(id, print_team_red, "%L", LANG_PLAYER, "MM_ALERT_CHAT", LANG_PLAYER, playerMutes[id][selectedPlayer] ? "MM_ALERT_OPTION_SET" : "MM_ALERT_OPTION_UNSET", selectedPlayer);
+	}
 
 	new uMenu, uNewmenu, uMenupage;
 	player_menu_info(id, uMenu, uNewmenu, uMenupage);
@@ -145,15 +184,21 @@ stock generate_dictionary() {
 	if(!file_exists(cfg_file)) {
 		write_file(cfg_file, "[ru]");
 		write_file(cfg_file, "MM_MENU_TITLE = \r[MUTE]\w Меню");
+		write_file(cfg_file, "MM_MENU_ITEM_ALL = Заткнуть всех");
 		write_file(cfg_file, "MM_MENU_LABEL_GAGGED = \r[\yзаткнут\r]");
 		write_file(cfg_file, "MM_ALERT_OPTION_SET = заткнул");
 		write_file(cfg_file, "MM_ALERT_OPTION_UNSET = снял мут с");
 		write_file(cfg_file, "MM_ALERT_CHAT = Ты %L ^^3%n");
+		write_file(cfg_file, "MM_ALERT_CHAT_ALL_SET = Ты заткнул ^^3всех");
+		write_file(cfg_file, "MM_ALERT_CHAT_ALL_UNSET = Ты снял мут ^^3со всех");
 		write_file(cfg_file, "^n[en]");
 		write_file(cfg_file, "MM_MENU_TITLE = \r[MUTE]\w Menu");
+		write_file(cfg_file, "MM_MENU_ITEM_ALL = Mute all");
 		write_file(cfg_file, "MM_MENU_LABEL_GAGGED = \r[\ymuted\r]");
 		write_file(cfg_file, "MM_ALERT_OPTION_SET = muted");
 		write_file(cfg_file, "MM_ALERT_OPTION_UNSET = unmuted");
 		write_file(cfg_file, "MM_ALERT_CHAT = You %L ^^3%n");
+		write_file(cfg_file, "MM_ALERT_CHAT_ALL_SET = You muted ^^3all");
+		write_file(cfg_file, "MM_ALERT_CHAT_ALL_UNSET = You unmuted ^^3all");
 	}
 }
