@@ -10,6 +10,7 @@ enum any:CVARS {
 	TIME_END,
 	FLAGS[32],
 	FLAGS_BIT,
+	AWARD_BOTS,
 	ALERT[192],
 	ALERT_OFF[192],
 	ALERT_COLOR[12],
@@ -40,7 +41,7 @@ enum any:GAME_DATA {
 new cvar[CVARS], player[MAX_CLIENTS + 1][PLAYER_DATA], game[GAME_DATA];
 
 public plugin_init() {
-	register_plugin("Night VIPs", "1.1.0", "szawesome");
+	register_plugin("Night VIPs", "1.1.1", "szawesome");
 
 	RegisterHookChain(RG_RoundEnd, "RG_RoundEnd_Post", true);
 	if(strlen(cvar[ALERT]) || strlen(cvar[ALERT_OFF])) {
@@ -122,6 +123,19 @@ RegisterCvars() {
 		),
 		cvar[FLAGS],
 		charsmax(cvar[FLAGS])
+	);
+	bind_pcvar_num(
+		create_cvar(
+			.name = "night_vips_bots", 
+			.string = "1",
+			.flags = FCVAR_NONE,
+			.description = "Выдавать флаги ботам?^n1 - выдавать^n0 - не выдавать",
+			.has_min = true,
+			.min_val = 0.0,
+			.has_max = true,
+			.max_val = 1.0
+		),
+		cvar[AWARD_BOTS]
 	);
 	bind_pcvar_string(
 		create_cvar(
@@ -246,6 +260,7 @@ CheckForNight() {
 AwardPlayer(id) {
 	if(!is_user_connected(id) || is_user_hltv(id)
 		|| !cvar[FLAGS_BIT]
+		|| (cvar[AWARD_BOTS] != 1 && is_user_bot(id))
 	) {
 		return false;
 	}
